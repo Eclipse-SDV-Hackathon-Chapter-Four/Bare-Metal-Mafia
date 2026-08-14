@@ -15,7 +15,7 @@ You will start with simulated sensors and actuators, develop the application as 
 The challenge combines four main technologies:
 
 - **Eclipse uProtocol** for transport-independent service communication.
-- **Eclipse openDuT** for creating and switching between virtual and physical test environments.
+- **[Eclipse openDuT](https://opendut.eclipse.dev/)** for creating and switching between virtual and physical test environments.
 - **Eclipse OpenBSW / Eclipse OpenSOVD** for accessing embedded ECU functionality.
 - **AutoSD** as the Linux-based HPC platform on which the main vehicle application can run.
 
