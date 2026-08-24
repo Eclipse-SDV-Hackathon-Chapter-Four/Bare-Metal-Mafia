@@ -1,0 +1,196 @@
+services:
+  zenohd:
+    image: eclipse/zenoh:latest
+    container_name: zenohd
+    command: ["-l", "tcp/0.0.0.0:7447"]
+    ports:
+      - "7447:7447"
+
+  guardian:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: guardian
+    image: hack-to-the-future/guardian:stage-a
+    container_name: guardian
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8080
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/zenohd:7447
+    ports:
+      - "8080:8080"
+    depends_on:
+      - actuation-adapter
+      - zenohd
+
+  child-presence-sim:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: child_presence_sim
+    image: hack-to-the-future/child-presence-sim:stage-a
+    container_name: child-presence-sim
+    environment:
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/zenohd:7447
+    depends_on:
+      - guardian
+      - zenohd
+
+  # temperature-sim:
+  #   build:
+  #     context: .
+  #     dockerfile: Containerfile
+  #     args:
+  #       BIN_NAME: temperature_sim
+  #   image: hack-to-the-future/temperature-sim:stage-a
+  #   container_name: temperature-sim
+  #   environment:
+  #     HEAT_GAIN_PER_STEP: "0.18"
+  #     ALARM_HEAT_PER_STEP: "0.02"
+  #     COOLING_PER_STEP_FULL_WINDOW: "3.00"
+  #     PUBLISH_INTERVAL_S: "2"
+  #     RUST_LOG: info
+  #     ZENOH_CONNECT: tcp/zenohd:7447
+  #   depends_on:
+  #     - guardian
+  #     - window-controller-sim
+  #     - zenohd
+
+  actuation-adapter:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: actuation_adapter
+    image: hack-to-the-future/actuation-adapter:stage-b
+    container_name: actuation-adapter
+    environment:
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/zenohd:7447
+    depends_on:
+      - cda-sim
+      - zenohd
+
+  cda-sim:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: cda_sim
+    image: hack-to-the-future/cda-sim:stage-b
+    container_name: cda-sim
+    environment:
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/zenohd:7447
+    depends_on:
+      - window-controller-sim
+      - zenohd
+
+  window-controller-sim:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: window_controller_sim
+    image: hack-to-the-future/window-controller-sim:stage-b
+    container_name: window-controller-sim
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8092
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/zenohd:7447
+    ports:
+      - "8092:8092"
+    depends_on:
+      - zenohd
+
+  # ── Stage C: ThreadX / Renode temperature sensor (SOME/IP) ────────────────
+  #
+  # This service runs the Eclipse ThreadX temperature sensor (Linux port)
+  # which publishes cabin temperature as SOME/IP Notification packets
+  # (Service 0x1234 / Event 0x8001) over UDP to the someip-uprot-bridge.
+  #
+  # To use the real Renode/STM32F407 emulation instead:
+  #   1. Build the ARM ELF:  cd threadx-temp-sensor && ./scripts/build_renode.sh
+  #   2. Run Renode:         ./scripts/run_renode.sh
+  #   3. Disable this service (comment it out or remove it)
+  #   4. Point BRIDGE_IP in the Renode host environment to the bridge container IP
+  #
+  # NOTE: Disable temperature-sim when this service is active to avoid
+  #       competing temperature sources reaching the guardian.
+  threadx-temp-sensor:
+    build:
+      context: ./threadx-temp-sensor
+      dockerfile: Dockerfile
+    image: hack-to-the-future/threadx-temp-sensor:stage-c
+    container_name: threadx-temp-sensor
+    environment:
+      # Docker DNS resolves this to the bridge container automatically
+      BRIDGE_IP: someip-uprot-bridge
+      BRIDGE_PORT: "30501"
+    depends_on:
+      - someip-uprot-bridge
+    profiles:
+      - threadx
+
+  # ── Stage C: SOME/IP → uProtocol bridge ─────────────────────────────────
+  #
+  # Receives SOME/IP Notification packets from the ThreadX temperature sensor
+  # (Docker Linux port or Renode STM32F407 emulation) and re-publishes them
+  # as uProtocol CabinTemperatureEvent messages on the Zenoh transport so the
+  # Guardian can consume them without any knowledge of SOME/IP.
+  #
+  # When using with Renode directly (no threadx-temp-sensor Docker service):
+  #   Set SOMEIP_LISTEN_ADDR=0.0.0.0 (default) and expose port 30501 on the
+  #   host so Renode's TAP interface can reach the bridge.
+  someip-uprot-bridge:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: someip_uprot_bridge
+    image: hack-to-the-future/someip-uprot-bridge:stage-c
+    container_name: someip-uprot-bridge
+    environment:
+      SOMEIP_LISTEN_ADDR: "0.0.0.0"
+      SOMEIP_LISTEN_PORT: "30501"
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/zenohd:7447
+    ports:
+      # Expose so Renode (running on the host) can also send SOME/IP packets
+      # directly to the bridge without going through the threadx-temp-sensor service.
+      - "30501:30501/udp"
+    depends_on:
+      - zenohd
+    profiles:
+      - threadx
+
+  # ── Stage C: Reverse window bridge (uProtocol → SOME/IP) ──────────────────
+  #
+  # Converts uProtocol window state events (from window_controller_sim via Zenoh)
+  # to SOME/IP Notification packets and sends them to the ThreadX temperature
+  # sensor. This closes the thermal feedback loop: when Guardian triggers
+  # mitigation (window opening), the temperature sensor receives the window
+  # state and applies the thermal model to lower the temperature.
+  someip-window-bridge:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: someip_window_bridge
+    image: hack-to-the-future/someip-window-bridge:stage-c
+    container_name: someip-window-bridge
+    environment:
+      THREADX_SENSOR_IP: threadx-temp-sensor
+      THREADX_SENSOR_PORT: "30502"
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/zenohd:7447
+    depends_on:
+      - zenohd
+      - threadx-temp-sensor
+    profiles:
+      - threadx
