@@ -7,12 +7,13 @@ Minimal Rust-based demo for a child-in-car guardian flow using uProtocol over Ze
 
 - `guardian`: central decision service.
 - `child_presence_sim`: publishes child presence events.
-- `temperature_sim`: software temperature simulator for the closed loop. It exists, but is currently commented out in [`docker-compose.yml`]
+- `temperature_sim`: software temperature simulator for the closed loop. It reacts to both window state and HVAC state.
 - `actuation_adapter`: receives mitigation requests from `guardian`.
 - `cda_sim`: simulated diagnostics layer.
 - `window_controller_sim`: simulated window actuator.
 - `someip_uprot_bridge`: converts SOME/IP temperature messages to uProtocol.
 - `someip_window_bridge`: converts window-state uProtocol events back to SOME/IP.
+- `ros2-hvac/`: ROS 2 HVAC simulator workload orchestrated by Eclipse Muto and observed through `ros2_medkit`.
 - `threadx-temp-sensor/`: Eclipse ThreadX temperature sensor used for the ThreadX/SOME-IP path.
 
 ## Prerequisites
@@ -39,6 +40,7 @@ This starts:
 - `zenohd`
 - `guardian`
 - `child-presence-sim`
+- `temperature-sim`
 - `actuation-adapter`
 - `cda-sim`
 - `window-controller-sim`
@@ -48,6 +50,103 @@ Exposed ports:
 - `7447`: `zenohd`
 - `8080`: `guardian`
 - `8092`: `window-controller-sim`
+
+Start the default stack plus the ROS 2 HVAC workload:
+
+```bash
+docker compose --profile ros2 up --build
+```
+
+This adds:
+
+- `ros2-hvac`
+
+Notes:
+
+- `ros2-hvac` exposes the `ros2_medkit` gateway on `18080` (container port `8080`) and the HVAC fault UI on `18081`.
+- Inside the container, Eclipse Muto Composer launches the ROS 2 HVAC node, while a Rust `up-rust` bridge exposes the VSS HVAC setpoint interface, publishes HVAC state into Zenoh, and mirrors that state into ROS 2 parameters.
+- `temperature-sim` consumes the HVAC state and target temperature and cools the cabin faster through HVAC than through window opening alone.
+- `ros2_medkit` is started with the diagnostics bridge enabled so HVAC faults appear through the REST API, and the bridge UI can inject an HVAC fault for guardian escalation tests.
+- `rqt`, `rqt_graph`, and the common `rqt` plugins are installed in the `ros2-hvac` image for ROS 2 topic and graph inspection.
+
+To observe ROS 2 topics with `rqt` from the running `ros2-hvac` container:
+
+```bash
+docker compose --profile ros2 exec ros2-hvac bash
+source /opt/ros/$ROS_DISTRO/setup.bash
+source /opt/muto_ws/install/setup.bash
+source /opt/hvac_ws/install/setup.bash
+rqt
+```
+
+Common views:
+
+- `Plugins -> Introspection -> Node Graph`
+- `Plugins -> Topics -> Topic Monitor`
+- `Plugins -> Topics -> Message Publisher`
+
+If you run this from a container, GUI display forwarding must already work on your host. If not, use the same ROS environment on the host or add an X/Wayland display bridge.
+
+## Windows + WSL + Docker Compose
+
+If you are using Windows with WSL and the ROS 2 stack is running inside the Docker Compose containers, the recommended workflow is:
+
+1. Start the ROS 2 profile from your WSL shell:
+
+```bash
+docker compose --profile ros2 up --build
+```
+
+2. Keep ROS 2 running in the containers.
+
+3. Start `rqt` from WSL against the running `ros2-hvac` container:
+
+```bash
+docker compose --profile ros2 exec ros2-hvac bash
+source /opt/ros/$ROS_DISTRO/setup.bash
+source /opt/muto_ws/install/setup.bash
+source /opt/hvac_ws/install/setup.bash
+rqt
+```
+
+Notes for Windows/WSL:
+
+- This assumes WSLg is available, so Linux GUI apps can open directly on Windows.
+- If you do not have WSLg, you need an X server on Windows and a working `DISPLAY` setup in WSL.
+- `rqt` does not connect over ports `18080` or `18081`; it inspects ROS 2 topics from inside the ROS environment.
+- `18080` remains the `ros2_medkit` REST API.
+- `18081` remains the custom HVAC fault UI.
+
+### Install `rqt` on WSL Ubuntu 24.04
+
+If you want to run `rqt` directly from WSL Ubuntu 24.04 instead of from inside the container, use the current ROS 2 Jazzy packages.
+
+1. Install ROS 2 Jazzy on Ubuntu 24.04 in WSL if it is not already installed.
+
+2. Install `rqt` and common plugins:
+
+```bash
+sudo apt update
+sudo apt install ros-jazzy-rqt\*
+```
+
+3. Source the ROS 2 environment in WSL:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+```
+
+4. Start `rqt`:
+
+```bash
+rqt
+```
+
+Notes:
+
+- On Ubuntu 24.04, ROS 2 Jazzy is the supported ROS 2 release.
+- If the ROS 2 packages are not yet configured in WSL, follow the official ROS 2 Jazzy Ubuntu installation guide first.
+- If `rqt` is started from WSL rather than from the container, it still needs network and DDS visibility to the ROS 2 graph running in Docker.
 
 ## ThreadX / SOME-IP path
 
@@ -65,9 +164,9 @@ That adds:
 
 Notes:
 
-- `temperature_sim` is disabled in the current compose file.
 - `someip-uprot-bridge` exposes UDP `30501`.
 - The embedded sensor sources live in [`threadx-temp-sensor/`]
+- Do not run `temperature-sim` at the same time as the ThreadX/SOME-IP temperature path.
 
 ## Current Flow Diagram
 

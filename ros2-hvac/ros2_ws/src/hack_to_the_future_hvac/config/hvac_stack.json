@@ -1,0 +1,33 @@
+{
+  "stackId": "guardian:hvac:v1",
+  "name": "Guardian HVAC Stack",
+  "node": [
+    {
+      "name": "hvac_simulator",
+      "pkg": "hack_to_the_future_hvac",
+      "exec": "hvac_simulator",
+      "param": [
+        {
+          "name": "publish_interval_s",
+          "value": "2.0"
+        },
+        {
+          "name": "target_temperature_celsius",
+          "value": "22"
+        },
+        {
+          "name": "air_conditioning_active",
+          "value": "false"
+        },
+        {
+          "name": "fan_speed_percent",
+          "value": "0"
+        },
+        {
+          "name": "fault_active",
+          "value": "false"
+        }
+      ]
+    }
+  ]
+}

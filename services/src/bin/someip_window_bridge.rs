@@ -42,21 +42,21 @@ const WINDOW_IFACE_VER: u8 = 0x01;
 /// Craft a SOME/IP Notification packet for window state.
 fn make_window_packet(window_pct: u8) -> [u8; WINDOW_SOMEIP_PACKET_LEN] {
     let mut buf = [0u8; WINDOW_SOMEIP_PACKET_LEN];
+    let service_id = WINDOW_SERVICE_ID.to_be_bytes();
+    let event_id = WINDOW_EVENT_ID.to_be_bytes();
+    let client_id = WINDOW_CLIENT_ID.to_be_bytes();
 
     /* Service ID 0x5678 */
-    buf[0] = 0x56;
-    buf[1] = 0x78;
+    buf[0..2].copy_from_slice(&service_id);
     /* Event ID 0x8002 */
-    buf[2] = 0x80;
-    buf[3] = 0x02;
+    buf[2..4].copy_from_slice(&event_id);
     /* Length = 0x00000001 (1 byte payload) */
     buf[4] = 0x00;
     buf[5] = 0x00;
     buf[6] = 0x00;
     buf[7] = 0x01;
     /* Client ID 0x0002 */
-    buf[8] = 0x00;
-    buf[9] = 0x02;
+    buf[8..10].copy_from_slice(&client_id);
     /* Session ID = 1 (static for simplicity) */
     buf[10] = 0x00;
     buf[11] = 0x01;

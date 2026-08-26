@@ -2,9 +2,9 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use guardian_sil::{
-    diag_alarm_cmd_uri, diag_window_cmd_uri, make_uri_provider, mitigation_rpc_uri,
-    open_up_transport, publish_json_event, AlarmCommand, MitigationRequest, MitigationResponse,
-    WindowPositionCommand, RID_MITIGATION_REQUEST_RPC,
+    diag_alarm_cmd_uri, diag_hvac_cmd_uri, diag_window_cmd_uri, make_uri_provider,
+    mitigation_rpc_uri, open_up_transport, publish_json_event, AlarmCommand, HvacCommand,
+    MitigationRequest, MitigationResponse, WindowPositionCommand, RID_MITIGATION_REQUEST_RPC,
 };
 use tracing::{info, warn};
 use up_rust::communication::{InMemoryRpcServer, RequestHandler, RpcServer, ServiceInvocationError, UPayload};
@@ -60,8 +60,18 @@ impl RequestHandler for MitigationHandler {
                 enabled: request.alarm_enabled,
             };
 
+            let hvac_cmd = HvacCommand {
+                request_id: request.request_id.clone(),
+                target_temperature_celsius: request.hvac_target_temperature_celsius,
+                air_conditioning_active: request.hvac_power_enabled,
+                fan_speed_percent: request.hvac_fan_speed_percent.min(100),
+            };
+
             let mut success = true;
 
+            success &= publish_json_event(self.transport.clone(), diag_hvac_cmd_uri(), &hvac_cmd)
+                .await
+                .is_ok();
             success &= publish_json_event(self.transport.clone(), diag_window_cmd_uri(), &window_cmd)
                 .await
                 .is_ok();

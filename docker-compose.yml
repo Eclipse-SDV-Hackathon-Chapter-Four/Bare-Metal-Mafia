@@ -40,25 +40,26 @@ services:
       - guardian
       - zenohd
 
-  # temperature-sim:
-  #   build:
-  #     context: .
-  #     dockerfile: Containerfile
-  #     args:
-  #       BIN_NAME: temperature_sim
-  #   image: hack-to-the-future/temperature-sim:stage-a
-  #   container_name: temperature-sim
-  #   environment:
-  #     HEAT_GAIN_PER_STEP: "0.18"
-  #     ALARM_HEAT_PER_STEP: "0.02"
-  #     COOLING_PER_STEP_FULL_WINDOW: "3.00"
-  #     PUBLISH_INTERVAL_S: "2"
-  #     RUST_LOG: info
-  #     ZENOH_CONNECT: tcp/zenohd:7447
-  #   depends_on:
-  #     - guardian
-  #     - window-controller-sim
-  #     - zenohd
+  temperature-sim:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: temperature_sim
+    image: hack-to-the-future/temperature-sim:stage-a
+    container_name: temperature-sim
+    environment:
+      HEAT_GAIN_PER_STEP: "0.18"
+      ALARM_HEAT_PER_STEP: "0.02"
+      COOLING_PER_STEP_FULL_WINDOW: "1.20"
+      HVAC_COOLING_PER_STEP_FULL_POWER: "2.75"
+      PUBLISH_INTERVAL_S: "2"
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/zenohd:7447
+    depends_on:
+      - guardian
+      - window-controller-sim
+      - zenohd
 
   actuation-adapter:
     build:
@@ -107,6 +108,45 @@ services:
       - "8092:8092"
     depends_on:
       - zenohd
+
+  # ── Optional ROS 2 HVAC path (Muto + ros2_medkit) ──────────────────────────
+  #
+  # This service adds an additional container workload that runs a ROS 2 HVAC
+  # controller workload, exposes the HVAC VSS actuator/state path into the
+  # existing Guardian Zenoh / uProtocol network through a dedicated up-rust
+  # bridge, and exposes ROS 2 faults through ros2_medkit.
+  #
+  # temperature-sim remains the cabin temperature source and consumes HVAC state
+  # from this workload. Disable temperature-sim only when using the ThreadX
+  # SOME/IP temperature path instead.
+  ros2-hvac:
+    build:
+      context: .
+      dockerfile: ros2-hvac/Dockerfile
+    image: hack-to-the-future/ros2-hvac:stage-ros2
+    container_name: ros2-hvac
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8093
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/zenohd:7447
+      ROS_DOMAIN_ID: "0"
+      MUTO_BOOTSTRAP_DELAY_S: "8"
+      MEDKIT_BASE_URL: http://127.0.0.1:8080/api/v1/
+      MEDKIT_HVAC_APP_ID: hvac_simulator
+      MEDKIT_TARGET_TEMPERATURE_PARAM: target_temperature_celsius
+      MEDKIT_AC_ACTIVE_PARAM: air_conditioning_active
+      MEDKIT_FAN_SPEED_PARAM: fan_speed_percent
+      MEDKIT_FAULT_PARAM: fault_active
+      HVAC_BRIDGE_SYNC_INTERVAL_MS: "1000"
+    ports:
+      - "18080:8080"
+      - "18081:8093"
+    depends_on:
+      - window-controller-sim
+      - zenohd
+    profiles:
+      - ros2
 
   # ── Stage C: ThreadX / Renode temperature sensor (SOME/IP) ────────────────
   #

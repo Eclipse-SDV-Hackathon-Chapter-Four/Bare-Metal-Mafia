@@ -148,6 +148,41 @@ A service that starts on your laptop may later run inside the AutoSD HPC. A simu
 
 ---
 
+# Development Workflow
+
+## Windows + WSL + Docker Compose
+
+If you are developing on Windows with WSL and the ROS 2 environment is running inside the Docker Compose containers, use this workflow:
+
+1. Start the stack from WSL:
+
+```bash
+docker compose --profile ros2 up --build
+```
+
+2. Use the published HTTP ports from Windows or WSL:
+
+- `http://localhost:18080` for the `ros2_medkit` REST API
+- `http://localhost:18081` for the HVAC fault UI
+
+3. Observe ROS 2 topics with `rqt` by entering the running `ros2-hvac` container:
+
+```bash
+docker compose --profile ros2 exec ros2-hvac bash
+source /opt/ros/$ROS_DISTRO/setup.bash
+source /opt/muto_ws/install/setup.bash
+source /opt/hvac_ws/install/setup.bash
+rqt
+```
+
+Notes:
+
+- On Windows 11 with WSLg, `rqt` should open directly as a Linux GUI application.
+- Without WSLg, use an X server on Windows and a working `DISPLAY` configuration in WSL.
+- `rqt` inspects ROS 2 topics from inside the ROS environment; it does not use the `ros2_medkit` HTTP API.
+
+---
+
 # Communication Philosophy
 
 The challenge uses two complementary concepts.

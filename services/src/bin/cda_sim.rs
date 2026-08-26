@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use guardian_sil::{
-    decode_json_payload, diag_alarm_cmd_uri, diag_window_cmd_uri, make_uri_provider,
-    open_up_transport, publish_json_event, uds_alarm_cmd_uri, uds_window_cmd_uri, AlarmCommand,
-    WindowPositionCommand,
+    decode_json_payload, diag_alarm_cmd_uri, diag_hvac_cmd_uri, diag_window_cmd_uri,
+    make_uri_provider, open_up_transport, publish_json_event, uds_alarm_cmd_uri,
+    uds_hvac_cmd_uri, uds_window_cmd_uri, AlarmCommand, HvacCommand, WindowPositionCommand,
 };
 use tracing::{info, warn};
 use up_rust::{UListener, UMessage, UTransport};
@@ -55,6 +55,33 @@ impl UListener for DiagAlarmListener {
     }
 }
 
+struct DiagHvacListener {
+    transport: std::sync::Arc<dyn UTransport>,
+}
+
+#[async_trait]
+impl UListener for DiagHvacListener {
+    async fn on_receive(&self, message: UMessage) {
+        match decode_json_payload::<HvacCommand>(&message) {
+            Ok(cmd) => {
+                if publish_json_event(self.transport.clone(), uds_hvac_cmd_uri(), &cmd)
+                    .await
+                    .is_ok()
+                {
+                    info!(
+                        "CDA->UDS HVAC target={}C ac={} fan={} request_id={} forwarded",
+                        cmd.target_temperature_celsius,
+                        cmd.air_conditioning_active,
+                        cmd.fan_speed_percent,
+                        cmd.request_id
+                    );
+                }
+            }
+            Err(err) => warn!("Invalid diag HVAC payload: {}", err),
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
@@ -88,6 +115,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &diag_alarm_cmd_uri(),
             None,
             std::sync::Arc::new(DiagAlarmListener {
+                transport: transport.clone(),
+            }),
+        )
+        .await?;
+
+    transport
+        .register_listener(
+            &diag_hvac_cmd_uri(),
+            None,
+            std::sync::Arc::new(DiagHvacListener {
                 transport: transport.clone(),
             }),
         )

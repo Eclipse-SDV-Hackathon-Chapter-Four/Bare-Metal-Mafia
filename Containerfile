@@ -15,7 +15,8 @@ RUN mkdir -p services/src/bin \
     && printf "fn main() {}\n" > services/src/bin/cda_sim.rs \
     && printf "fn main() {}\n" > services/src/bin/window_controller_sim.rs \
     && printf "fn main() {}\n" > services/src/bin/someip_uprot_bridge.rs \
-    && printf "fn main() {}\n" > services/src/bin/someip_window_bridge.rs
+    && printf "fn main() {}\n" > services/src/bin/someip_window_bridge.rs \
+    && printf "fn main() {}\n" > services/src/bin/ros2_hvac_bridge.rs
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
@@ -37,10 +38,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
 FROM docker.io/library/debian:bookworm-slim
 ARG BIN_NAME
 WORKDIR /app
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /workspace/out/service /app/service
 RUN chmod +x /app/service
