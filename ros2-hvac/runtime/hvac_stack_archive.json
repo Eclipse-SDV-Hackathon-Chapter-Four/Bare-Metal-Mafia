@@ -1,0 +1,17 @@
+{
+  "metadata": {
+    "name": "guardian_hvac_simulator",
+    "description": "Guardian HVAC ROS 2 simulator deployed by Eclipse Muto",
+    "content_type": "stack/archive",
+    "version": "1.0.0"
+  },
+  "launch": {
+    "url": "http://artifact-server:9090/hvac_simulator.tar.gz",
+    "properties": {
+      "algorithm": "sha256",
+      "checksum": "5596380b1e33020e316c6f0f0c04e7743a1ffb0f66116a1fd6050521dbe4a893",
+      "launch_file": "run.sh",
+      "flatten": true
+    }
+  }
+}

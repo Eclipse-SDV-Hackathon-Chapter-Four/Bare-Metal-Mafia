@@ -7,6 +7,14 @@ services:
     ports:
       - "7447:7447"
 
+  artifact-server:
+    image: python:3.12-alpine
+    volumes:
+      - ./ros2-hvac/artifacts:/artifacts:ro
+    expose:
+      - "9090"
+    command: ["python", "-m", "http.server", "9090", "-d", "/artifacts"]
+
   guardian:
     build:
       context: .
@@ -145,6 +153,7 @@ services:
       ZENOH_CONNECT: tcp/zenohd:7447
       ROS_DOMAIN_ID: "0"
       MUTO_BOOTSTRAP_DELAY_S: "8"
+      MUTO_DEPLOY_DISCOVERY_WAIT_S: "3"
       MEDKIT_BASE_URL: http://127.0.0.1:8080/api/v1/
       MEDKIT_HVAC_APP_ID: hvac_simulator
       MEDKIT_TARGET_TEMPERATURE_PARAM: target_temperature_celsius
@@ -156,6 +165,7 @@ services:
       - "18080:8080"
       - "18081:8093"
     depends_on:
+      - artifact-server
       - window-controller-sim
       - zenohd
     profiles:

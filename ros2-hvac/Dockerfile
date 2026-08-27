@@ -53,17 +53,14 @@ RUN apt-get update \
     && rosdep install --from-paths src --ignore-src -r -y --skip-keys="ament_python" \
     && colcon build --merge-install --cmake-args -DCMAKE_BUILD_TYPE=Release
 
-COPY ros2-hvac/ros2_ws/src /opt/hvac_ws/src
-
-WORKDIR /opt/hvac_ws
-RUN source /opt/ros/${ROS_DISTRO}/setup.bash \
-    && source /opt/muto_ws/install/setup.bash \
-    && colcon build --merge-install
-
 COPY ros2-hvac/start-hvac-stack.sh /usr/local/bin/start-hvac-stack.sh
+COPY ros2-hvac/runtime /opt/muto_runtime
 COPY --from=rust-build /out/ros2_hvac_bridge /usr/local/bin/ros2_hvac_bridge
 
-RUN chmod +x /usr/local/bin/start-hvac-stack.sh /usr/local/bin/ros2_hvac_bridge \
+RUN chmod +x \
+        /usr/local/bin/start-hvac-stack.sh \
+        /usr/local/bin/ros2_hvac_bridge \
+        /opt/muto_runtime/deploy_stack.py \
     && mkdir -p /root/.ros2_medkit
 
 ENV MEDKIT_BASE_URL=http://127.0.0.1:8080/api/v1/ \

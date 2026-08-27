@@ -3,20 +3,20 @@ set -eo pipefail
 
 source /opt/ros/${ROS_DISTRO}/setup.bash
 source /opt/muto_ws/install/setup.bash
-source /opt/hvac_ws/install/setup.bash
 
 mkdir -p "${HOME}/.ros2_medkit"
 
-ros2 launch hack_to_the_future_hvac muto.launch.py \
+ros2 launch /opt/muto_runtime/muto.launch.py \
   vehicle_namespace:="${MUTO_VEHICLE_NAMESPACE:-org.eclipse.muto.guardian}" \
   vehicle_name:="${MUTO_VEHICLE_NAME:-guardian-hvac}" &
 MUTO_PID=$!
 
 sleep "${MUTO_BOOTSTRAP_DELAY_S:-8}"
 
-ros2 run hack_to_the_future_hvac deploy_stack \
+python3 /opt/muto_runtime/deploy_stack.py \
   --ros-args \
-  -p stack_path:="/opt/hvac_ws/install/share/hack_to_the_future_hvac/config/hvac_stack.json" &
+  -p stack_path:=/opt/muto_runtime/hvac_stack_archive.json \
+  -p discovery_wait_s:="${MUTO_DEPLOY_DISCOVERY_WAIT_S:-3.0}" &
 DEPLOY_PID=$!
 
 ros2 launch ros2_medkit_gateway bringup.launch.py \

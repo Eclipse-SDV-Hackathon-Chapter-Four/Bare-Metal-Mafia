@@ -67,11 +67,38 @@ Notes:
 
 - `ros2-hvac` exposes the `ros2_medkit` gateway on `18080` (container port `8080`) and the HVAC fault UI on `18081`.
 - `medkit-web-ui` is available on `http://localhost:3000`.
-- Inside the container, Eclipse Muto Composer launches the ROS 2 HVAC node, while a Rust `up-rust` bridge exposes the VSS HVAC setpoint interface, publishes HVAC state into Zenoh, and mirrors that state into ROS 2 parameters.
+- Inside the container, Eclipse Muto launches the HVAC workload from a `stack/archive` manifest. The ROS 2 package is served by the local `artifact-server` and provisioned into `/root/.muto/workspaces/guardian_hvac_simulator`.
+- A Rust `up-rust` bridge exposes the VSS HVAC setpoint interface, publishes HVAC state into Zenoh, and mirrors that state into ROS 2 parameters.
 - `temperature-sim` consumes the HVAC state and target temperature and cools the cabin faster through HVAC than through window opening alone.
 - `ros2_medkit` is started with the diagnostics bridge enabled so HVAC faults appear through the REST API, and the bridge UI can inject an HVAC fault for guardian escalation tests.
 - `guardian-dashboard` is available on `http://localhost:8094` and aggregates the live Guardian, HVAC, child presence, window, and medkit fault view in one page.
 - `rqt`, `rqt_graph`, and the common `rqt` plugins are installed in the `ros2-hvac` image for ROS 2 topic and graph inspection.
+
+### Verify the deployed HVAC workload
+
+After the `ros2` profile is up, verify that Muto deployed the archive and that the HVAC node is running:
+
+```bash
+docker compose --profile ros2 exec ros2-hvac bash
+source /opt/ros/$ROS_DISTRO/setup.bash
+source /opt/muto_ws/install/setup.bash
+ros2 node list
+ros2 topic echo /diagnostics --once
+```
+
+Expected signals:
+
+- `/hvac_simulator` appears in `ros2 node list`
+- `/diagnostics` contains `guardian_hvac/thermal_state`
+- `http://localhost:18081/api/state` returns the current HVAC bridge state
+- `http://localhost:18080/api/v1/faults` shows HVAC faults after fault injection
+
+To inspect the deployed Muto workspace directly:
+
+```bash
+cat /root/.muto/workspaces/guardian_hvac_simulator/run.log
+ps -ef | grep -E 'run.sh|hvac_simulator|ros2 launch'
+```
 
 To observe ROS 2 topics with `rqt` from the running `ros2-hvac` container:
 
@@ -79,7 +106,6 @@ To observe ROS 2 topics with `rqt` from the running `ros2-hvac` container:
 docker compose --profile ros2 exec ros2-hvac bash
 source /opt/ros/$ROS_DISTRO/setup.bash
 source /opt/muto_ws/install/setup.bash
-source /opt/hvac_ws/install/setup.bash
 rqt
 ```
 
@@ -109,7 +135,6 @@ docker compose --profile ros2 up --build
 docker compose --profile ros2 exec ros2-hvac bash
 source /opt/ros/$ROS_DISTRO/setup.bash
 source /opt/muto_ws/install/setup.bash
-source /opt/hvac_ws/install/setup.bash
 rqt
 ```
 
@@ -135,6 +160,46 @@ Connect it to:
 - Base endpoint: `api/v1`
 
 This UI is useful for browsing medkit entities, data, operations, and configurations. It complements the custom Guardian dashboard on `8094` rather than replacing it.
+
+### Fault Injection and Observation
+
+The verified ROS 2 HVAC flow on Thursday, August 27, 2026 is:
+
+1. Open the HVAC fault UI:
+
+```text
+http://localhost:18081
+```
+
+2. Toggle the simulated HVAC fault.
+
+3. Verify the bridge state:
+
+```bash
+curl http://localhost:18081/api/state
+```
+
+4. Verify the ROS 2 diagnostic:
+
+```bash
+docker compose --profile ros2 exec ros2-hvac bash
+source /opt/ros/$ROS_DISTRO/setup.bash
+source /opt/muto_ws/install/setup.bash
+ros2 topic echo /diagnostics --once
+```
+
+5. Verify the medkit fault output:
+
+```bash
+curl http://localhost:18080/api/v1/faults
+```
+
+When the fault is enabled, `ros2_medkit` should report an HVAC fault similar to:
+
+- `fault_code: GUARDIAN_HVAC_THERMAL_STATE`
+- `description: HVAC fault simulated`
+- `severity_label: ERROR`
+- `reporting_sources: ["/diagnostic_bridge"]`
 
 ### Install `rqt` on WSL Ubuntu 24.04
 
