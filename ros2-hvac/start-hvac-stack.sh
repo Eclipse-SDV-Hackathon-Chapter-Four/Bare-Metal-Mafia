@@ -21,7 +21,7 @@ DEPLOY_PID=$!
 
 ros2 launch ros2_medkit_gateway bringup.launch.py \
   enable_diagnostic_bridge:=true \
-  host:=0.0.0.0 &
+  server_host:=0.0.0.0 &
 MEDKIT_PID=$!
 
 cleanup() {

@@ -1,7 +1,8 @@
+name: hack-to-the-future
+
 services:
   zenohd:
     image: eclipse/zenoh:latest
-    container_name: zenohd
     command: ["-l", "tcp/0.0.0.0:7447"]
     ports:
       - "7447:7447"
@@ -13,7 +14,6 @@ services:
       args:
         BIN_NAME: guardian
     image: hack-to-the-future/guardian:stage-a
-    container_name: guardian
     environment:
       HOST: 0.0.0.0
       PORT: 8080
@@ -25,6 +25,25 @@ services:
       - actuation-adapter
       - zenohd
 
+  dashboard:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: dashboard
+    image: hack-to-the-future/dashboard:stage-observe
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8094
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/zenohd:7447
+      MEDKIT_FAULTS_URL: http://ros2-hvac:8080/api/v1/faults
+      HVAC_FAULT_CONTROL_URL: http://ros2-hvac:8093/api/fault
+    ports:
+      - "8094:8094"
+    depends_on:
+      - zenohd
+
   child-presence-sim:
     build:
       context: .
@@ -32,7 +51,6 @@ services:
       args:
         BIN_NAME: child_presence_sim
     image: hack-to-the-future/child-presence-sim:stage-a
-    container_name: child-presence-sim
     environment:
       RUST_LOG: info
       ZENOH_CONNECT: tcp/zenohd:7447
@@ -47,7 +65,6 @@ services:
       args:
         BIN_NAME: temperature_sim
     image: hack-to-the-future/temperature-sim:stage-a
-    container_name: temperature-sim
     environment:
       HEAT_GAIN_PER_STEP: "0.18"
       ALARM_HEAT_PER_STEP: "0.02"
@@ -68,7 +85,6 @@ services:
       args:
         BIN_NAME: actuation_adapter
     image: hack-to-the-future/actuation-adapter:stage-b
-    container_name: actuation-adapter
     environment:
       RUST_LOG: info
       ZENOH_CONNECT: tcp/zenohd:7447
@@ -83,7 +99,6 @@ services:
       args:
         BIN_NAME: cda_sim
     image: hack-to-the-future/cda-sim:stage-b
-    container_name: cda-sim
     environment:
       RUST_LOG: info
       ZENOH_CONNECT: tcp/zenohd:7447
@@ -98,7 +113,6 @@ services:
       args:
         BIN_NAME: window_controller_sim
     image: hack-to-the-future/window-controller-sim:stage-b
-    container_name: window-controller-sim
     environment:
       HOST: 0.0.0.0
       PORT: 8092
@@ -124,7 +138,6 @@ services:
       context: .
       dockerfile: ros2-hvac/Dockerfile
     image: hack-to-the-future/ros2-hvac:stage-ros2
-    container_name: ros2-hvac
     environment:
       HOST: 0.0.0.0
       PORT: 8093
@@ -148,6 +161,16 @@ services:
     profiles:
       - ros2
 
+  medkit-web-ui:
+    image: ghcr.io/selfpatch/ros2_medkit_web_ui:latest
+    ports:
+      - "3000:80"
+    depends_on:
+      - ros2-hvac
+    profiles:
+      - ros2
+      - medkit-ui
+
   # ── Stage C: ThreadX / Renode temperature sensor (SOME/IP) ────────────────
   #
   # This service runs the Eclipse ThreadX temperature sensor (Linux port)
@@ -167,7 +190,6 @@ services:
       context: ./threadx-temp-sensor
       dockerfile: Dockerfile
     image: hack-to-the-future/threadx-temp-sensor:stage-c
-    container_name: threadx-temp-sensor
     environment:
       # Docker DNS resolves this to the bridge container automatically
       BRIDGE_IP: someip-uprot-bridge
@@ -194,7 +216,6 @@ services:
       args:
         BIN_NAME: someip_uprot_bridge
     image: hack-to-the-future/someip-uprot-bridge:stage-c
-    container_name: someip-uprot-bridge
     environment:
       SOMEIP_LISTEN_ADDR: "0.0.0.0"
       SOMEIP_LISTEN_PORT: "30501"
@@ -223,7 +244,6 @@ services:
       args:
         BIN_NAME: someip_window_bridge
     image: hack-to-the-future/someip-window-bridge:stage-c
-    container_name: someip-window-bridge
     environment:
       THREADX_SENSOR_IP: threadx-temp-sensor
       THREADX_SENSOR_PORT: "30502"
@@ -234,3 +254,8 @@ services:
       - threadx-temp-sensor
     profiles:
       - threadx
+
+networks:
+  default:
+    name: hack-to-the-future-net
+    driver: bridge

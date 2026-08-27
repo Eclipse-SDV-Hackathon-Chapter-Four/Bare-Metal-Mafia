@@ -11,3 +11,18 @@
     commands_to_agent_topic: "command_to_agent"
     thing_messages_topic: "thing_messages"
     ignored_packages: []
+
+/muto/compose_plugin:
+  ros__parameters:
+    ignored_packages:
+      - ""
+
+/muto/provision_plugin:
+  ros__parameters:
+    ignored_packages:
+      - ""
+
+/muto/launch_plugin:
+  ros__parameters:
+    ignored_packages:
+      - ""

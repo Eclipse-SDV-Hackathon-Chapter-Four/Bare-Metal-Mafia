@@ -26,6 +26,7 @@ RUN apt-get update \
         git \
         python3-colcon-common-extensions \
         python3-jsonschema \
+        python3-pip \
         python3-rosdep \
         python3-requests \
         python3-setuptools \
@@ -41,7 +42,9 @@ RUN rosdep init 2>/dev/null || true \
     && rosdep update
 
 WORKDIR /opt/muto_ws/src
-RUN git clone --depth 1 https://github.com/eclipse-muto/messages.git \
+RUN git clone --depth 1 https://github.com/eclipse-muto/agent.git \
+    && git clone --depth 1 https://github.com/eclipse-muto/core.git \
+    && git clone --depth 1 https://github.com/eclipse-muto/messages.git \
     && git clone --depth 1 https://github.com/eclipse-muto/composer.git
 
 WORKDIR /opt/muto_ws

@@ -49,6 +49,7 @@ Exposed ports:
 
 - `7447`: `zenohd`
 - `8080`: `guardian`
+- `8094`: `guardian-dashboard`
 - `8092`: `window-controller-sim`
 
 Start the default stack plus the ROS 2 HVAC workload:
@@ -60,13 +61,16 @@ docker compose --profile ros2 up --build
 This adds:
 
 - `ros2-hvac`
+- `medkit-web-ui`
 
 Notes:
 
 - `ros2-hvac` exposes the `ros2_medkit` gateway on `18080` (container port `8080`) and the HVAC fault UI on `18081`.
+- `medkit-web-ui` is available on `http://localhost:3000`.
 - Inside the container, Eclipse Muto Composer launches the ROS 2 HVAC node, while a Rust `up-rust` bridge exposes the VSS HVAC setpoint interface, publishes HVAC state into Zenoh, and mirrors that state into ROS 2 parameters.
 - `temperature-sim` consumes the HVAC state and target temperature and cools the cabin faster through HVAC than through window opening alone.
 - `ros2_medkit` is started with the diagnostics bridge enabled so HVAC faults appear through the REST API, and the bridge UI can inject an HVAC fault for guardian escalation tests.
+- `guardian-dashboard` is available on `http://localhost:8094` and aggregates the live Guardian, HVAC, child presence, window, and medkit fault view in one page.
 - `rqt`, `rqt_graph`, and the common `rqt` plugins are installed in the `ros2-hvac` image for ROS 2 topic and graph inspection.
 
 To observe ROS 2 topics with `rqt` from the running `ros2-hvac` container:
@@ -116,6 +120,21 @@ Notes for Windows/WSL:
 - `rqt` does not connect over ports `18080` or `18081`; it inspects ROS 2 topics from inside the ROS environment.
 - `18080` remains the `ros2_medkit` REST API.
 - `18081` remains the custom HVAC fault UI.
+
+### Use the official `ros2_medkit_web_ui`
+
+When the `ros2` profile is active, the official `ros2_medkit_web_ui` container is also available on:
+
+```text
+http://localhost:3000
+```
+
+Connect it to:
+
+- Gateway URL: `http://localhost:18080`
+- Base endpoint: `api/v1`
+
+This UI is useful for browsing medkit entities, data, operations, and configurations. It complements the custom Guardian dashboard on `8094` rather than replacing it.
 
 ### Install `rqt` on WSL Ubuntu 24.04
 

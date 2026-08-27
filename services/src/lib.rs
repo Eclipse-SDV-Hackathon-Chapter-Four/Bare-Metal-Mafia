@@ -76,7 +76,7 @@ pub enum GuardianState {
     Mitigating,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GuardianSnapshot {
     pub state: GuardianState,
     pub child_present: bool,

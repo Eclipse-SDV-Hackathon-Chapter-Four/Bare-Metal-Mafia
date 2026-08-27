@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use axum::extract::State;
@@ -14,6 +14,7 @@ use guardian_sil::{
 };
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
+use tokio::process::Command;
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 use up_rust::{UListener, UMessage, UTransport};
@@ -72,6 +73,7 @@ impl HvacControllerState {
 struct AppState {
     hvac_state: Arc<Mutex<HvacControllerState>>,
     transport: Arc<dyn UTransport>,
+    ros2_node_name: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -96,6 +98,10 @@ impl UListener for HvacCommandListener {
                     guard.last_request_id = Some(cmd.request_id.clone());
                     guard.snapshot()
                 };
+
+                if let Err(err) = sync_ros2_hvac_parameters(&self.app.ros2_node_name, &snapshot).await {
+                    warn!("failed to sync ROS2 HVAC parameters after command: {}", err);
+                }
 
                 if let Err(err) = publish_hvac_state(&self.app.transport, &snapshot).await {
                     warn!("failed to publish HVAC state after command: {}", err);
@@ -133,6 +139,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app_state = AppState {
         hvac_state: Arc::new(Mutex::new(HvacControllerState::default())),
         transport: transport.clone(),
+        ros2_node_name: std::env::var("ROS2_HVAC_NODE_NAME")
+            .unwrap_or_else(|_| "/hvac_simulator".to_string()),
     };
 
     transport
@@ -146,7 +154,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     let initial_snapshot = app_state.hvac_state.lock().await.snapshot();
+    if let Err(err) = sync_ros2_hvac_parameters(&app_state.ros2_node_name, &initial_snapshot).await {
+        warn!("failed to sync initial ROS2 HVAC parameters: {}", err);
+    }
     publish_hvac_state(&transport, &initial_snapshot).await?;
+
+    let sync_state = app_state.hvac_state.clone();
+    let sync_node_name = app_state.ros2_node_name.clone();
+    tokio::spawn(async move {
+        let mut last_synced: Option<(i8, bool, u8, bool)> = None;
+
+        loop {
+            let snapshot = {
+                let guard = sync_state.lock().await;
+                guard.snapshot()
+            };
+
+            let fingerprint = (
+                snapshot.target_temperature_celsius,
+                snapshot.effective_air_conditioning_active,
+                snapshot.fan_speed_percent,
+                snapshot.fault_active,
+            );
+
+            if last_synced != Some(fingerprint) {
+                match sync_ros2_hvac_parameters(&sync_node_name, &snapshot).await {
+                    Ok(()) => last_synced = Some(fingerprint),
+                    Err(err) => warn!("failed to sync ROS2 HVAC parameters in retry loop: {}", err),
+                }
+            }
+
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+    });
 
     let app = Router::new()
         .route("/", get(index))
@@ -185,6 +225,10 @@ async fn set_fault(
         guard.fault_active = payload.fault_active;
         guard.snapshot()
     };
+
+    if let Err(err) = sync_ros2_hvac_parameters(&app.ros2_node_name, &snapshot).await {
+        warn!("failed to sync ROS2 HVAC parameters after fault toggle: {}", err);
+    }
 
     publish_hvac_state(&app.transport, &snapshot)
         .await
@@ -236,6 +280,91 @@ fn now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
+}
+
+async fn sync_ros2_hvac_parameters(
+    node_name_hint: &str,
+    snapshot: &HvacControllerSnapshot,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let node_name = resolve_ros2_node_name(node_name_hint).await?;
+    run_ros2_param_set(
+        &node_name,
+        "target_temperature_celsius",
+        &snapshot.target_temperature_celsius.to_string(),
+    )
+    .await?;
+    run_ros2_param_set(
+        &node_name,
+        "air_conditioning_active",
+        if snapshot.effective_air_conditioning_active {
+            "true"
+        } else {
+            "false"
+        },
+    )
+    .await?;
+    run_ros2_param_set(
+        &node_name,
+        "fan_speed_percent",
+        &snapshot.fan_speed_percent.to_string(),
+    )
+    .await?;
+    run_ros2_param_set(
+        &node_name,
+        "fault_active",
+        if snapshot.fault_active { "true" } else { "false" },
+    )
+    .await?;
+    Ok(())
+}
+
+async fn run_ros2_param_set(
+    node_name: &str,
+    param_name: &str,
+    value: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let output = Command::new("ros2")
+        .args(["param", "set", node_name, param_name, value])
+        .output()
+        .await?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+
+    Err(format!(
+        "ros2 param set {} {} {} failed: {} {}",
+        node_name, param_name, value, stdout, stderr
+    )
+    .into())
+}
+
+async fn resolve_ros2_node_name(
+    node_name_hint: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    let output = Command::new("ros2").args(["node", "list"]).output().await?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!("ros2 node list failed: {}", stderr).into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let nodes: Vec<&str> = stdout.lines().map(str::trim).filter(|line| !line.is_empty()).collect();
+
+    if nodes.iter().any(|node| *node == node_name_hint) {
+        return Ok(node_name_hint.to_string());
+    }
+
+    let bare_hint = node_name_hint.trim_start_matches('/');
+    if let Some(node) = nodes.iter().find(|node| node.trim_start_matches('/').ends_with(bare_hint)) {
+        return Ok((*node).to_string());
+    }
+
+    Err(format!("node not found from hint {}. visible nodes: {}", node_name_hint, nodes.join(", ")).into())
 }
 
 const INDEX_HTML: &str = r#"<!doctype html>

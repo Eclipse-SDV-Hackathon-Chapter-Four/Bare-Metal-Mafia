@@ -15,14 +15,17 @@ class StackDeployer(Node):
         )
         self.declare_parameter("stack_topic", "/muto/stack")
         self.declare_parameter("context", "guardian.hvac")
+        self.declare_parameter("publish_attempts", 8)
         self.publisher = self.create_publisher(
             MutoAction, str(self.get_parameter("stack_topic").value), 10
         )
-        self.timer = self.create_timer(2.0, self._publish_once)
-        self.sent = False
+        self.remaining_attempts = int(self.get_parameter("publish_attempts").value)
+        self.timer = self.create_timer(2.0, self._publish_stack)
 
-    def _publish_once(self) -> None:
-        if self.sent:
+    def _publish_stack(self) -> None:
+        if self.remaining_attempts <= 0:
+            self.timer.cancel()
+            self.shutdown_timer = self.create_timer(0.5, self._shutdown)
             return
 
         stack_path = Path(str(self.get_parameter("stack_path").value))
@@ -34,10 +37,10 @@ class StackDeployer(Node):
         msg.payload = json.dumps(payload)
 
         self.publisher.publish(msg)
-        self.get_logger().info(f"Published Muto stack from {stack_path}")
-        self.sent = True
-        self.timer.cancel()
-        self.shutdown_timer = self.create_timer(0.5, self._shutdown)
+        self.remaining_attempts -= 1
+        self.get_logger().info(
+            f"Published Muto stack from {stack_path} ({self.remaining_attempts} attempts remaining)"
+        )
 
     def _shutdown(self) -> None:
         self.shutdown_timer.cancel()

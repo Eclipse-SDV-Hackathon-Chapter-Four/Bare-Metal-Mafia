@@ -9,7 +9,7 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
-        (f"share/{package_name}/launch", ["launch/muto.launch.py"]),
+        (f"share/{package_name}/launch", ["launch/muto.launch.py", "launch/hvac.launch.py"]),
         (f"share/{package_name}/config", ["config/hvac_stack.json", "config/muto.yaml"]),
     ],
     install_requires=["setuptools"],

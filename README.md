@@ -164,6 +164,8 @@ docker compose --profile ros2 up --build
 
 - `http://localhost:18080` for the `ros2_medkit` REST API
 - `http://localhost:18081` for the HVAC fault UI
+- `http://localhost:3000` for the official `ros2_medkit_web_ui`
+- `http://localhost:8094` for the Guardian observation dashboard
 
 3. Observe ROS 2 topics with `rqt` by entering the running `ros2-hvac` container:
 
@@ -180,6 +182,8 @@ Notes:
 - On Windows 11 with WSLg, `rqt` should open directly as a Linux GUI application.
 - Without WSLg, use an X server on Windows and a working `DISPLAY` configuration in WSL.
 - `rqt` inspects ROS 2 topics from inside the ROS environment; it does not use the `ros2_medkit` HTTP API.
+- The dashboard on `8094` is the easiest way to observe the full simulated setup without requiring a ROS GUI.
+- The official `ros2_medkit_web_ui` on `3000` should be connected to gateway URL `http://localhost:18080` with base endpoint `api/v1`.
 
 ---
 
