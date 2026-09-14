@@ -22,8 +22,12 @@ SHELL ["/bin/bash", "-lc"]
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
+        can-utils \
         curl \
         git \
+        iproute2 \
+        kmod \
+        python3-can \
         python3-colcon-common-extensions \
         python3-jsonschema \
         python3-pip \
@@ -49,7 +53,7 @@ RUN git clone --depth 1 https://github.com/eclipse-muto/agent.git \
 
 WORKDIR /opt/muto_ws
 RUN apt-get update \
-    && source /opt/ros/${ROS_DISTRO}/setup.bash \
+    && . /opt/ros/${ROS_DISTRO}/setup.sh \
     && rosdep install --from-paths src --ignore-src -r -y --skip-keys="ament_python" \
     && colcon build --merge-install --cmake-args -DCMAKE_BUILD_TYPE=Release
 

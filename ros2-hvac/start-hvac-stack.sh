@@ -6,6 +6,15 @@ source /opt/muto_ws/install/setup.bash
 
 mkdir -p "${HOME}/.ros2_medkit"
 
+CAN_CHANNEL="${CAN_CHANNEL:-vcan0}"
+if [[ "${CAN_BRINGUP_VCAN:-false}" == "true" ]]; then
+  modprobe vcan 2>/dev/null || true
+  if ! ip link show "${CAN_CHANNEL}" >/dev/null 2>&1; then
+    ip link add dev "${CAN_CHANNEL}" type vcan || true
+  fi
+  ip link set "${CAN_CHANNEL}" up || true
+fi
+
 ros2 launch /opt/muto_runtime/muto.launch.py \
   vehicle_namespace:="${MUTO_VEHICLE_NAMESPACE:-org.eclipse.muto.guardian}" \
   vehicle_name:="${MUTO_VEHICLE_NAME:-guardian-hvac}" &

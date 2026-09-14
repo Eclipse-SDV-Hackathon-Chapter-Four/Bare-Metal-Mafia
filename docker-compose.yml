@@ -161,6 +161,15 @@ services:
       MEDKIT_FAN_SPEED_PARAM: fan_speed_percent
       MEDKIT_FAULT_PARAM: fault_active
       HVAC_BRIDGE_SYNC_INTERVAL_MS: "1000"
+      CAN_ENABLED: "false"
+      CAN_BUSTYPE: socketcan
+      CAN_CHANNEL: vcan0
+      CAN_TX_PERIOD_S: "1.0"
+      CAN_TX_ID: "0x320"
+      CAN_RX_ID: "0x321"
+      CAN_BRINGUP_VCAN: "false"
+    cap_add:
+      - NET_ADMIN
     ports:
       - "18080:8080"
       - "18081:8093"

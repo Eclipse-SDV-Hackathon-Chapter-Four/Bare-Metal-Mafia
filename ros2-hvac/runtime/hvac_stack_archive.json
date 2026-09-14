@@ -9,7 +9,7 @@
     "url": "http://artifact-server:9090/hvac_simulator.tar.gz",
     "properties": {
       "algorithm": "sha256",
-      "checksum": "5596380b1e33020e316c6f0f0c04e7743a1ffb0f66116a1fd6050521dbe4a893",
+      "checksum": "d3c4f3385aef30007842dbaac14d4301dc7d72f55464d1739da3bf58ab0b84e6",
       "launch_file": "run.sh",
       "flatten": true
     }
