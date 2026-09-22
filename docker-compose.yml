@@ -170,6 +170,7 @@ services:
       CAN_BRINGUP_VCAN: "false"
     cap_add:
       - NET_ADMIN
+      - NET_RAW
     ports:
       - "18080:8080"
       - "18081:8093"
@@ -179,6 +180,29 @@ services:
       - zenohd
     profiles:
       - ros2
+      - ros2-host-can
+    network_mode: bridge
+
+  ros2-hvac-host-can:
+    extends:
+      service: ros2-hvac
+    profiles:
+      - ros2-host-can
+    network_mode: host
+    environment:
+      ZENOH_CONNECT: tcp/127.0.0.1:7447
+      CAN_ENABLED: "true"
+      CAN_BUSTYPE: socketcan
+      CAN_CHANNEL: vcan0
+      CAN_BRINGUP_VCAN: "false"
+      MEDKIT_BASE_URL: http://127.0.0.1:8080/api/v1/
+      MEDKIT_HVAC_APP_ID: hvac_simulator
+      MEDKIT_TARGET_TEMPERATURE_PARAM: target_temperature_celsius
+      MEDKIT_AC_ACTIVE_PARAM: air_conditioning_active
+      MEDKIT_FAN_SPEED_PARAM: fan_speed_percent
+      MEDKIT_FAULT_PARAM: fault_active
+    ports: []
+    depends_on: []
 
   medkit-web-ui:
     image: ghcr.io/selfpatch/ros2_medkit_web_ui:latest

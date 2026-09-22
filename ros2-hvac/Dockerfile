@@ -7,10 +7,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY services/Cargo.toml services/Cargo.toml
 COPY services/src services/src
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
-    --mount=type=cache,target=/workspace/target,sharing=locked \
-    cargo build --target-dir /workspace/target --bin ros2_hvac_bridge \
+RUN cargo build --target-dir /workspace/target --bin ros2_hvac_bridge \
     && mkdir -p /out \
     && cp /workspace/target/debug/ros2_hvac_bridge /out/ros2_hvac_bridge
 
