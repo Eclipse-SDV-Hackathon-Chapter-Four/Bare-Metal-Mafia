@@ -12,6 +12,7 @@ Vagrant.configure("2") do |config|
   config.vm.provision "shell", inline: <<-SHELL
     apt-get update
     apt-get install -y docker.io docker-compose-v2
+    usermod -aG docker vagrant  # allow running Docker commands without sudo (unsafe, but fine in VM)
 
 
     ##### Setup Rust toolchain #####
