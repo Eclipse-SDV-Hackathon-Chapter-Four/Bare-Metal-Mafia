@@ -285,9 +285,13 @@ pub fn evaluate_state(child_present: bool, temperature_celsius: f32) -> Guardian
     }
 
     if temperature_celsius >= 40.0 {
-        GuardianState::Critical
+        GuardianState::Critical(DangerReason::Heat)
     } else if temperature_celsius >= 32.0 {
-        GuardianState::Warning
+        GuardianState::Warning(DangerReason::Heat)
+    //} else if temperature_celsius <= 20.0 {
+    //    GuardianState::Warning(DangerReason::Cold)
+    //} else if temperature_celsius <= 15.0 {
+    //    GuardianState::Critical(DangerReason::Cold)
     } else {
         GuardianState::Monitoring
     }

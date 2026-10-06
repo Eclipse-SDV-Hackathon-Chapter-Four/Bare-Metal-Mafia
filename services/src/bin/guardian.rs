@@ -10,7 +10,7 @@ use guardian_sil::{
     decode_json_payload, evaluate_state, hvac_state_uri, make_uri_provider, mitigation_rpc_uri,
     open_up_transport, publish_json_event, vss_cabin_temperature_uri, vss_child_presence_uri,
     vss_guardian_state_uri, CabinTemperatureEvent, ChildPresenceEvent, GuardianSnapshot,
-    GuardianState, HvacStateEvent, MitigationRequest, SensorStatus,
+    GuardianState, DangerReason, HvacStateEvent, MitigationRequest, SensorStatus,
 };
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
@@ -170,32 +170,36 @@ impl GuardianRuntime {
         let base = evaluate_state(self.child_present, self.temperature_celsius);
         let mut trigger_mitigation = false;
 
-        if base == GuardianState::Critical {
-            self.current_state = if self.window_stage_requested || self.hvac_active {
-                GuardianState::Mitigating
-            } else {
-                GuardianState::Critical
-            };
-
-            if !self.window_stage_requested {
-                if self.hvac_fault_active {
-                    if !self.mitigation_pending {
+        match base {
+            GuardianState::Critical(reason) => {
+                self.current_state = if self.window_stage_requested || self.hvac_active {
+                    GuardianState::Mitigating(reason)
+                } else {
+                    GuardianState::Critical(reason)
+                };
+    
+                if !self.window_stage_requested {
+                    if self.hvac_fault_active {
+                        if !self.mitigation_pending {
+                            trigger_mitigation = true;
+                        }
+                    } else if !self.hvac_stage_requested {
+                        if !self.mitigation_pending {
+                            trigger_mitigation = true;
+                        }
+                    } else if self.should_escalate_to_window() && !self.mitigation_pending {
                         trigger_mitigation = true;
                     }
-                } else if !self.hvac_stage_requested {
-                    if !self.mitigation_pending {
-                        trigger_mitigation = true;
-                    }
-                } else if self.should_escalate_to_window() && !self.mitigation_pending {
-                    trigger_mitigation = true;
                 }
             }
-        } else {
-            self.current_state = base;
-            self.mitigation_pending = false;
-            self.window_stage_requested = false;
-            self.hvac_stage_requested = false;
-            self.hvac_request_started_ms = None;
+
+            _ => {
+                self.current_state = base;
+                self.mitigation_pending = false;
+                self.window_stage_requested = false;
+                self.hvac_stage_requested = false;
+                self.hvac_request_started_ms = None;
+            }
         }
 
         info!(
@@ -218,7 +222,12 @@ impl GuardianRuntime {
         self.hvac_fault_active = event.fault_active;
         self.hvac_target_temperature_celsius = event.target_temperature_celsius;
 
-        if self.hvac_fault_active && self.current_state == GuardianState::Critical && !self.window_stage_requested {
+        let state_critical = match self.current_state {
+            GuardianState::Critical(_) => true,
+            _ => false,
+        };
+
+        if self.hvac_fault_active && state_critical && !self.window_stage_requested {
             return true;
         }
 
@@ -244,7 +253,7 @@ impl GuardianRuntime {
             self.hvac_request_started_ms = Some(now_ms());
             self.hvac_target_temperature_celsius = request.hvac_target_temperature_celsius;
         }
-        self.current_state = GuardianState::Mitigating;
+        self.current_state = GuardianState::Mitigating(DangerReason::Heat);
         info!(
             "Mitigation RPC accepted -> hvac_target={}C window={} alarm={}",
             request.hvac_target_temperature_celsius, request.window_percentage, request.alarm_enabled
