@@ -76,6 +76,12 @@ pub enum GuardianState {
     Mitigating,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum DangerReason {
+    Heat,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GuardianSnapshot {
     pub state: GuardianState,
