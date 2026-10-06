@@ -172,13 +172,15 @@ impl GuardianRuntime {
 
         match base {
             GuardianState::Critical(reason) => {
-                self.current_state = if self.window_stage_requested || self.hvac_active {
+                self.current_state = if reason == DangerReason::Heat
+                    && (self.window_stage_requested || self.hvac_active)
+                {
                     GuardianState::Mitigating(reason)
                 } else {
                     GuardianState::Critical(reason)
                 };
-    
-                if !self.window_stage_requested {
+
+                if reason == DangerReason::Heat && !self.window_stage_requested {
                     if self.hvac_fault_active {
                         if !self.mitigation_pending {
                             trigger_mitigation = true;
@@ -223,7 +225,8 @@ impl GuardianRuntime {
         self.hvac_target_temperature_celsius = event.target_temperature_celsius;
 
         let state_critical = match self.current_state {
-            GuardianState::Critical(_) => true,
+            GuardianState::Critical(DangerReason::Heat)
+            | GuardianState::Mitigating(DangerReason::Heat) => true,
             _ => false,
         };
 
@@ -450,4 +453,34 @@ fn now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cold_critical_state_does_not_request_heat_mitigation() {
+        let mut guard = GuardianRuntime::new();
+        guard.child_present = true;
+        guard.temperature_celsius = 10.0;
+
+        assert!(!guard.recompute_and_log());
+        assert_eq!(
+            guard.current_state,
+            GuardianState::Critical(DangerReason::Cold)
+        );
+
+        assert!(!guard.apply_hvac_state_event(HvacStateEvent {
+            target_temperature_celsius: 22,
+            air_conditioning_active: false,
+            fan_speed_percent: 0,
+            fault_active: true,
+            timestamp_ms: 0,
+        }));
+        assert_eq!(
+            guard.current_state,
+            GuardianState::Critical(DangerReason::Cold)
+        );
+    }
 }
