@@ -80,6 +80,7 @@ pub enum GuardianState {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum DangerReason {
     Heat,
+    Cold,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -288,10 +289,10 @@ pub fn evaluate_state(child_present: bool, temperature_celsius: f32) -> Guardian
         GuardianState::Critical(DangerReason::Heat)
     } else if temperature_celsius >= 32.0 {
         GuardianState::Warning(DangerReason::Heat)
-    //} else if temperature_celsius <= 20.0 {
-    //    GuardianState::Warning(DangerReason::Cold)
-    //} else if temperature_celsius <= 15.0 {
-    //    GuardianState::Critical(DangerReason::Cold)
+    } else if temperature_celsius <= 15.0 {
+        GuardianState::Critical(DangerReason::Cold)
+    } else if temperature_celsius <= 20.0 {
+        GuardianState::Warning(DangerReason::Cold)
     } else {
         GuardianState::Monitoring
     }
