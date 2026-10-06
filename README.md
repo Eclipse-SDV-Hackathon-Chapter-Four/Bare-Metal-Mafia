@@ -33,7 +33,7 @@ simulators to embedded targets to real hardware.
 > The Guardian therefore never addresses any of the following directly:
 >
 > | Forbidden inside Guardian | Use instead |
-> |---|---|
+> | --- | --- |
 > | CAN, GPIO, serial ports | uProtocol pub/sub on VSS topics |
 > | UDS, DoIP, ECU DIDs | uProtocol RPC to the Actuation Adapter, then CDA |
 > | SOME/IP | a SOME/IP to uProtocol bridge service |
@@ -81,7 +81,7 @@ No service knows where any other service runs, and that is what makes the swap p
 ### Communication patterns
 
 | Pattern | Use it for | Example |
-|---|---|---|
+| --- | --- | --- |
 | **uProtocol pub/sub** | sensor data and state broadcasts: fire and forget, many listeners | temperature event, child-presence event, Guardian state |
 | **uProtocol RPC** | one service asking another to perform an operation and awaiting the result | Guardian to Actuation Adapter: HVAC on, 18 °C, fan 100 %, close window |
 
@@ -92,7 +92,7 @@ No service knows where any other service runs, and that is what makes the swap p
 The official challenge progression, and where we stand:
 
 | Stage | Objective | Status | Notes |
-|:--:|---|---|---|
+| :--: | --- | --- | --- |
 | **1** | **Guardian Loop on your laptop.** Simulated sensors publish over uProtocol, Guardian shows state transitions | **Done** | Inherited from the reference stack. `docker compose up` shows the full escalation in about 30 s |
 | **2** | **Add simulated actuation.** uProtocol RPC to Actuation Adapter, CDA, window controller | **Done** | The SIL loop is closed end to end. The ROS 2 HVAC path is wired up as well |
 | **3** | **Run Guardian on AutoSD.** Same artifact, only deployment and configuration change | **Open** | `deploy/` is still empty. This is our largest gap |
@@ -106,13 +106,23 @@ The official challenge progression, and where we stand:
 Ordered by what unblocks the most. Each goal names the stage it serves.
 
 | # | Goal | Serves | Rationale |
-|:--:|---|:--:|---|
+| :--: | --- | :--: | --- |
 | 1 | **Get openDuT running as our testbench** | Stage 5 | Prerequisite for any hardware-swap demo. It must switch between at least two topologies, fully simulated and with a real endpoint |
 | 2 | **Deploy Guardian on the AutoSD HPC** | Stage 3 | Full-challenge requirement and currently untouched. The proof point is an identical service artifact before and after |
 | 3 | **Move the sensors to real hardware** | Stage 4 | AZ3166 with ThreadX replaces `temperature-sim`, and Guardian must not notice |
 | 4 | **Strengthen the Guardian decision logic** | bonus | Our differentiator beyond the Definition of Done. See below |
 | 5 | **Leverage the ROS 2 and Muto HVAC path** | Stage 2+ | Already present in `ros2-hvac/`. The work is integration and demonstration, not implementation |
 | 6 | **Build the demo narrative along the five stages** | all | Showing the same `evaluate_state` survive every swap is the pitch |
+
+## task distribution
+
+| # | member | task | note |
+| :--: | --- | :--: | --- |
+| 1 | Elias | overview | gitbacklock |
+| 2 | Lars | overview | openDuT, AutoSD |
+| 3 | Terra | OpenDuT, OpenBWS | working HW |
+| 4 | Dimitri | OpenDuT, OpenBWS | working HW |
+| 5 | Katharina | Loop features | Software Architecture |
 
 ### Guardian logic ideas (goal 4)
 
@@ -129,7 +139,7 @@ Ordered by what unblocks the most. Each goal names the stage it serves.
 ## Building Blocks
 
 | Block | Location | Status |
-|---|---|---|
+| --- | --- | --- |
 | **Guardian Loop**, hazard state machine | `services/src/bin/guardian.rs`, logic in `services/src/lib.rs` | Done |
 | **Child Presence Sensor**, simulated | `services/src/bin/child_presence_sim.rs` | Done, simulated |
 | **Temperature Sensor**, simulated with closed-loop thermal model | `services/src/bin/temperature_sim.rs` | Done, simulated |
@@ -162,7 +172,7 @@ The simulators run a scripted scenario at start-up, so every Guardian state appe
 within roughly 30 seconds:
 
 | Time | Event | Guardian state |
-|:--:|---|---|
+| :--: | --- | --- |
 | ~1 s | 26 °C, no child | `CLEAR` |
 | ~5 s | child present, confidence 0.98, zone `rear_center` | `MONITORING` |
 | ~5 s | 36 °C | `WARNING` |
@@ -183,7 +193,7 @@ The full walkthrough is in [docs/Tutorial.md](docs/Tutorial.md).
 ## Documentation
 
 | Document | Read it when |
-|---|---|
+| --- | --- |
 | [docs/Tutorial.md](docs/Tutorial.md) | You want the stack running and explained service by service |
 | [docs/Guardian-loop.md](docs/Guardian-loop.md) | You are building a component and need to know which existing project to copy from |
 | [docs/structure.drawio](docs/structure.drawio) | You need the editable architecture diagram |
