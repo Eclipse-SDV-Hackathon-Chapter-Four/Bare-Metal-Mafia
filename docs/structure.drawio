@@ -1,0 +1,55 @@
+<mxfile host="65bd71144e">
+    <diagram id="ceH8bMwHmSIUvd5s3vD4" name="Page-1">
+        <mxGraphModel dx="1088" dy="362" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="rpyHRFPBEeGHirOhcldV-12" edge="1" parent="1" source="rpyHRFPBEeGHirOhcldV-1" style="edgeStyle=none;html=1;" target="rpyHRFPBEeGHirOhcldV-2">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="rpyHRFPBEeGHirOhcldV-1" parent="1" style="whiteSpace=wrap;html=1;" value="Guardian loop" vertex="1">
+                    <mxGeometry height="60" width="120" x="370" y="290" as="geometry"/>
+                </mxCell>
+                <mxCell id="rpyHRFPBEeGHirOhcldV-13" edge="1" parent="1" source="rpyHRFPBEeGHirOhcldV-2" style="edgeStyle=none;html=1;" target="rpyHRFPBEeGHirOhcldV-4">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="rpyHRFPBEeGHirOhcldV-14" edge="1" parent="1" source="rpyHRFPBEeGHirOhcldV-2" style="edgeStyle=none;html=1;" target="rpyHRFPBEeGHirOhcldV-9">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="rpyHRFPBEeGHirOhcldV-15" edge="1" parent="1" source="rpyHRFPBEeGHirOhcldV-2" style="edgeStyle=none;html=1;" target="rpyHRFPBEeGHirOhcldV-6">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="rpyHRFPBEeGHirOhcldV-16" edge="1" parent="1" source="rpyHRFPBEeGHirOhcldV-2" style="edgeStyle=none;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="rpyHRFPBEeGHirOhcldV-7">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="rpyHRFPBEeGHirOhcldV-2" parent="1" style="whiteSpace=wrap;html=1;" value="service loop" vertex="1">
+                    <mxGeometry height="60" width="120" x="370" y="410" as="geometry"/>
+                </mxCell>
+                <mxCell id="rpyHRFPBEeGHirOhcldV-10" edge="1" parent="1" source="rpyHRFPBEeGHirOhcldV-3" style="edgeStyle=none;html=1;" target="rpyHRFPBEeGHirOhcldV-2">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="rpyHRFPBEeGHirOhcldV-3" parent="1" style="whiteSpace=wrap;html=1;" value="Pressure sensor (seat)" vertex="1">
+                    <mxGeometry height="60" width="130" x="110" y="360" as="geometry"/>
+                </mxCell>
+                <mxCell id="rpyHRFPBEeGHirOhcldV-4" parent="1" style="whiteSpace=wrap;html=1;" value="Temparatur sensor&lt;div&gt;(inside / outside)&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="60" width="120" x="300" y="600" as="geometry"/>
+                </mxCell>
+                <mxCell id="rpyHRFPBEeGHirOhcldV-11" edge="1" parent="1" source="rpyHRFPBEeGHirOhcldV-5" style="edgeStyle=none;html=1;" target="rpyHRFPBEeGHirOhcldV-2">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="rpyHRFPBEeGHirOhcldV-5" parent="1" style="whiteSpace=wrap;html=1;" value="Camera" vertex="1">
+                    <mxGeometry height="60" width="130" x="110" y="430" as="geometry"/>
+                </mxCell>
+                <mxCell id="rpyHRFPBEeGHirOhcldV-6" parent="1" style="whiteSpace=wrap;html=1;" value="Open window&lt;div&gt;/ turn on fan&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="60" width="120" x="580" y="350" as="geometry"/>
+                </mxCell>
+                <mxCell id="rpyHRFPBEeGHirOhcldV-7" parent="1" style="whiteSpace=wrap;html=1;" value="turn ac on" vertex="1">
+                    <mxGeometry height="60" width="120" x="580" y="420" as="geometry"/>
+                </mxCell>
+                <mxCell id="rpyHRFPBEeGHirOhcldV-9" parent="1" style="whiteSpace=wrap;html=1;" value="Engine Runnign&lt;div&gt;Batterie state&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="60" width="120" x="430" y="600" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
