@@ -1,0 +1,324 @@
+name: hack-to-the-future
+
+services:
+  zenohd:
+    image: eclipse/zenoh:latest
+    command: ["-l", "tcp/0.0.0.0:7447"]
+    ports:
+      - "7447:7447"
+
+  artifact-server:
+    image: python:3.12-alpine
+    volumes:
+      - ./ros2-hvac/artifacts:/artifacts:ro
+    expose:
+      - "9090"
+    command: ["python", "-m", "http.server", "9090", "-d", "/artifacts"]
+
+  guardian:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: guardian
+    image: hack-to-the-future/guardian:stage-a
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8080
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/zenohd:7447
+    ports:
+      - "8080:8080"
+    depends_on:
+      - actuation-adapter
+      - zenohd
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: dashboard
+    image: hack-to-the-future/dashboard:stage-observe
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8094
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/zenohd:7447
+      MEDKIT_FAULTS_URL: http://ros2-hvac:8080/api/v1/faults
+      HVAC_FAULT_CONTROL_URL: http://ros2-hvac:8093/api/fault
+    ports:
+      - "8094:8094"
+    depends_on:
+      - zenohd
+
+  child-presence-sim:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: child_presence_sim
+    image: hack-to-the-future/child-presence-sim:stage-a
+    environment:
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/zenohd:7447
+    depends_on:
+      - guardian
+      - zenohd
+
+  temperature-sim:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: temperature_sim
+    image: hack-to-the-future/temperature-sim:stage-a
+    environment:
+      HEAT_GAIN_PER_STEP: "0.18"
+      ALARM_HEAT_PER_STEP: "0.02"
+      COOLING_PER_STEP_FULL_WINDOW: "1.20"
+      HVAC_COOLING_PER_STEP_FULL_POWER: "2.75"
+      PUBLISH_INTERVAL_S: "2"
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/zenohd:7447
+    depends_on:
+      - guardian
+      - window-controller-sim
+      - zenohd
+
+  actuation-adapter:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: actuation_adapter
+    image: hack-to-the-future/actuation-adapter:stage-b
+    environment:
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/zenohd:7447
+    depends_on:
+      - cda-sim
+      - zenohd
+
+  cda-sim:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: cda_sim
+    image: hack-to-the-future/cda-sim:stage-b
+    environment:
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/zenohd:7447
+    depends_on:
+      - window-controller-sim
+      - zenohd
+
+  window-controller-sim:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: window_controller_sim
+    image: hack-to-the-future/window-controller-sim:stage-b
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8092
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/zenohd:7447
+    ports:
+      - "8092:8092"
+    depends_on:
+      - zenohd
+
+  # ── Optional ROS 2 HVAC path (Muto + ros2_medkit) ──────────────────────────
+  #
+  # This service adds an additional container workload that runs a ROS 2 HVAC
+  # controller workload, exposes the HVAC VSS actuator/state path into the
+  # existing Guardian Zenoh / uProtocol network through a dedicated up-rust
+  # bridge, and exposes ROS 2 faults through ros2_medkit.
+  #
+  # temperature-sim remains the cabin temperature source and consumes HVAC state
+  # from this workload. Disable temperature-sim only when using the ThreadX
+  # SOME/IP temperature path instead.
+  # One container, four processes (see ros2-hvac/README.md for the map):
+  #   Eclipse Muto runtime -> deploys the HVAC simulator from artifact-server
+  #   ros2_medkit gateway  -> REST diagnostics            host port 18080
+  #   ros2_hvac_bridge     -> uProtocol/Zenoh <-> ROS 2, fault console 18081
+  ros2-hvac:
+    build:
+      context: .
+      dockerfile: ros2-hvac/Dockerfile
+    image: hack-to-the-future/ros2-hvac:stage-ros2
+    environment:
+      # Rust bridge (ros2_hvac_bridge)
+      HOST: 0.0.0.0
+      PORT: 8093
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/zenohd:7447
+      # ROS 2 / Eclipse Muto bootstrap (start-hvac-stack.sh)
+      ROS_DOMAIN_ID: "0"
+      MUTO_BOOTSTRAP_DELAY_S: "8"
+      MUTO_DEPLOY_DISCOVERY_WAIT_S: "3"
+      # CAN bridge inside the HVAC simulator (forwarded via hvac.launch.py).
+      # Default CAN transport is python-can's udp_multicast: a pure userspace
+      # bus over UDP inside the container network. Works identically on
+      # macOS/Windows/Linux hosts (SocketCAN/vcan is Linux-kernel-only and is
+      # provided by the ros2-hvac-host-can profile instead).
+      CAN_ENABLED: "true"
+      CAN_BUSTYPE: udp_multicast
+      CAN_CHANNEL: 239.74.163.2
+      CAN_TX_PERIOD_S: "1.0"
+      CAN_RX_POLL_PERIOD_S: "0.05"
+      CAN_RETRY_PERIOD_S: "5.0"
+      CAN_TX_ID: "0x320"
+      CAN_RX_ID: "0x321"
+      CAN_BRINGUP_VCAN: "false"
+    ports:
+      - "18080:8080"
+      - "18081:8093"
+    depends_on:
+      - artifact-server
+      - window-controller-sim
+      - zenohd
+    profiles:
+      - ros2
+      - ros2-host-can
+
+  # Linux-only variant: real SocketCAN against a host-managed vcan0/can0.
+  # Requires a Linux host (or Linux VM); see ros2-hvac/CAN_INTEGRATION.md.
+  ros2-hvac-host-can:
+    extends:
+      service: ros2-hvac
+    profiles:
+      - ros2-host-can
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      ZENOH_CONNECT: tcp/127.0.0.1:7447
+      CAN_ENABLED: "true"
+      CAN_BUSTYPE: socketcan
+      CAN_CHANNEL: vcan0
+      # Set to "true" to let the container create vcan0 itself (needs NET_ADMIN).
+      CAN_BRINGUP_VCAN: "false"
+    ports: []
+    depends_on: []
+
+  # cansend/candump equivalents for the containerized udp_multicast CAN bus.
+  # Works on any host OS (macOS/Windows/Linux). On-demand usage:
+  #   podman-compose --profile can-tools -f docker-compose.yml run --rm can-tools send 321#160A01
+  #   podman-compose --profile can-tools -f docker-compose.yml run --rm can-tools dump
+  can-tools:
+    build:
+      context: ros2-hvac
+      dockerfile: can-tools/Dockerfile
+    image: hack-to-the-future/can-tools:stage-ros2
+    environment:
+      CAN_BUSTYPE: udp_multicast
+      CAN_CHANNEL: 239.74.163.2
+    # Shares the default compose network with ros2-hvac; UDP multicast only
+    # reaches containers on the same bridge network.
+    profiles:
+      - can-tools
+    command: ["dump"]
+
+  medkit-web-ui:
+    image: ghcr.io/selfpatch/ros2_medkit_web_ui:latest
+    ports:
+      - "3000:80"
+    depends_on:
+      - ros2-hvac
+    profiles:
+      - ros2
+      - medkit-ui
+
+  # ── Stage C: ThreadX / Renode temperature sensor (SOME/IP) ────────────────
+  #
+  # This service runs the Eclipse ThreadX temperature sensor (Linux port)
+  # which publishes cabin temperature as SOME/IP Notification packets
+  # (Service 0x1234 / Event 0x8001) over UDP to the someip-uprot-bridge.
+  #
+  # To use the real Renode/STM32F407 emulation instead:
+  #   1. Build the ARM ELF:  cd threadx-temp-sensor && ./scripts/build_renode.sh
+  #   2. Run Renode:         ./scripts/run_renode.sh
+  #   3. Disable this service (comment it out or remove it)
+  #   4. Point BRIDGE_IP in the Renode host environment to the bridge container IP
+  #
+  # NOTE: Disable temperature-sim when this service is active to avoid
+  #       competing temperature sources reaching the guardian.
+  threadx-temp-sensor:
+    build:
+      context: ./threadx-temp-sensor
+      dockerfile: Dockerfile
+    image: hack-to-the-future/threadx-temp-sensor:stage-c
+    environment:
+      # Docker DNS resolves this to the bridge container automatically
+      BRIDGE_IP: someip-uprot-bridge
+      BRIDGE_PORT: "30501"
+    depends_on:
+      - someip-uprot-bridge
+    profiles:
+      - threadx
+
+  # ── Stage C: SOME/IP → uProtocol bridge ─────────────────────────────────
+  #
+  # Receives SOME/IP Notification packets from the ThreadX temperature sensor
+  # (Docker Linux port or Renode STM32F407 emulation) and re-publishes them
+  # as uProtocol CabinTemperatureEvent messages on the Zenoh transport so the
+  # Guardian can consume them without any knowledge of SOME/IP.
+  #
+  # When using with Renode directly (no threadx-temp-sensor Docker service):
+  #   Set SOMEIP_LISTEN_ADDR=0.0.0.0 (default) and expose port 30501 on the
+  #   host so Renode's TAP interface can reach the bridge.
+  someip-uprot-bridge:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: someip_uprot_bridge
+    image: hack-to-the-future/someip-uprot-bridge:stage-c
+    environment:
+      SOMEIP_LISTEN_ADDR: "0.0.0.0"
+      SOMEIP_LISTEN_PORT: "30501"
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/zenohd:7447
+    ports:
+      # Expose so Renode (running on the host) can also send SOME/IP packets
+      # directly to the bridge without going through the threadx-temp-sensor service.
+      - "30501:30501/udp"
+    depends_on:
+      - zenohd
+    profiles:
+      - threadx
+
+  # ── Stage C: Reverse window bridge (uProtocol → SOME/IP) ──────────────────
+  #
+  # Converts uProtocol window state events (from window_controller_sim via Zenoh)
+  # to SOME/IP Notification packets and sends them to the ThreadX temperature
+  # sensor. This closes the thermal feedback loop: when Guardian triggers
+  # mitigation (window opening), the temperature sensor receives the window
+  # state and applies the thermal model to lower the temperature.
+  someip-window-bridge:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: someip_window_bridge
+    image: hack-to-the-future/someip-window-bridge:stage-c
+    environment:
+      THREADX_SENSOR_IP: threadx-temp-sensor
+      THREADX_SENSOR_PORT: "30502"
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/zenohd:7447
+    depends_on:
+      - zenohd
+      - threadx-temp-sensor
+    profiles:
+      - threadx
+
+networks:
+  default:
+    name: hack-to-the-future-net
+    driver: bridge
