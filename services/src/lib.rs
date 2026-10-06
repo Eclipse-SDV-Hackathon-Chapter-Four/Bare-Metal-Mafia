@@ -71,9 +71,9 @@ pub enum SensorStatus {
 pub enum GuardianState {
     Clear,
     Monitoring,
-    Warning,
-    Critical,
-    Mitigating,
+    Warning(DangerReason),
+    Critical(DangerReason),
+    Mitigating(DangerReason),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
