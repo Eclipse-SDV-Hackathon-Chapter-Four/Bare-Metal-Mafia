@@ -174,25 +174,7 @@ impl GuardianRuntime {
             GuardianState::Critical(reason) => {
                 match reason {
                     DangerReason::Heat => {
-                        self.current_state = if self.window_stage_requested || self.hvac_active {
-                            GuardianState::Mitigating(reason)
-                        } else {
-                            GuardianState::Critical(reason)
-                        };
-
-                        if !self.window_stage_requested {
-                            if self.hvac_fault_active {
-                                if !self.mitigation_pending {
-                                    trigger_mitigation = true;
-                                }
-                            } else if !self.hvac_stage_requested {
-                                if !self.mitigation_pending {
-                                    trigger_mitigation = true;
-                                }
-                            } else if self.should_escalate_to_window() && !self.mitigation_pending {
-                                trigger_mitigation = true;
-                            }
-                        }
+                        trigger_mitigation = self.should_mitigate_hot();
                     },
 
                     DangerReason::Cold => {
@@ -225,6 +207,19 @@ impl GuardianRuntime {
         );
 
         trigger_mitigation
+    }
+
+    fn should_mitigate_hot(&mut self) -> bool {
+        if self.window_stage_requested || self.hvac_active {
+            self.current_state = GuardianState::Mitigating(DangerReason::Heat);
+        };
+
+        if self.window_stage_requested {
+            return false;
+        }
+
+        let should_cool = self.hvac_fault_active || self.hvac_stage_requested || self.should_escalate_to_window();
+        return !self.mitigation_pending && should_cool;
     }
 
     fn apply_hvac_state_event(&mut self, event: HvacStateEvent) -> bool {
