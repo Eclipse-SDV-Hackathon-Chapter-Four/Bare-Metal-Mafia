@@ -116,14 +116,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let stages = vec![26.0_f32, 36.0_f32, 43.0_f32];
     for temperature in stages {
-        let event = CabinTemperatureEvent {
+        let event_1 = CabinTemperatureEvent {
             temperature_celsius: temperature,
             timestamp_ms: now_ms(),
             sensor_status: SensorStatus::Ok,
             sensor_id: 0,
         };
+        let event_2 = CabinTemperatureEvent {
+            temperature_celsius: temperature,
+            timestamp_ms: now_ms(),
+            sensor_status: SensorStatus::Ok,
+            sensor_id: 1,
+        };
 
-        publish_with_retry(transport.clone(), &event).await?;
+        publish_with_retry(transport.clone(), &event_1).await?;
+        publish_with_retry(transport.clone(), &event_2).await?;
         info!("published temperature: {:.1}C", temperature);
         tokio::time::sleep(Duration::from_secs(4)).await;
     }
@@ -160,14 +167,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         temperature_celsius = (temperature_celsius + delta).clamp(ambient_celsius, 48.0);
 
-        let event = CabinTemperatureEvent {
+        let event_1 = CabinTemperatureEvent {
+            temperature_celsius,
+            timestamp_ms: now_ms(),
+            sensor_status: SensorStatus::Ok,
+            sensor_id: 0,
+        };
+        let event_2 = CabinTemperatureEvent {
             temperature_celsius,
             timestamp_ms: now_ms(),
             sensor_status: SensorStatus::Ok,
             sensor_id: 0,
         };
 
-        publish_with_retry(transport.clone(), &event).await?;
+        publish_with_retry(transport.clone(), &event_1).await?;
+        publish_with_retry(transport.clone(), &event_2).await?;
         info!(
             "closed-loop temperature: {:.1}C (window={}%, hvac={} target={}C fan={}%, fault={}, alarm={}, delta={:+.2})",
             temperature_celsius,
