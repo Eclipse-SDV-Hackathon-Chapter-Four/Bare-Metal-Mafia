@@ -1,103 +1,228 @@
+<div align="center">
+
 # Bare-Metal-Mafia
-Hack to the Future – Guardian Loop: portable child presence detection that moves from simulation to real hardware without changing the feature. Eclipse SDV Hackathon 2026.
 
-## Quickstart: run the whole stack on a Raspberry Pi
+### Guardian Loop — portable child presence detection
 
-<!-- This section (Pi quickstart) was largely AI-generated.
-     Assisted-by: Anthropic Claude (Sonnet 5) -->
+**One feature. One codebase. Simulation, AutoSD, real hardware.**
 
-> Looking for AutoSD instead of Raspberry Pi OS + Docker Compose (the
-> hackathon challenge brief calls this out explicitly)? See
-> [`deploy/AUTOSD_ON_PI.md`](deploy/AUTOSD_ON_PI.md) - boots the real,
-> official AutoSD image under KVM-accelerated QEMU directly on this same
-> Pi, verified live (login, Podman, network all confirmed working); what's
-> still open is running our actual stack inside it.
+*Eclipse SDV Hackathon 2026 · [Hack to the Future](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/Hack-to-the-Future) challenge*
 
-The Pi hosts the entire Guardian Loop stack (Guardian, dashboard, sensors,
-actuation chain, the S32K148 DoIP bridge, and the AZ3166 ThreadX sensor
-bridge) locally, so the whole team reaches the dashboard over the network
-without depending on anyone's laptop. Details and rationale:
-[`firmware/S32K148_HARDWARE_BRINGUP.md`](firmware/S32K148_HARDWARE_BRINGUP.md)
-and [`az3166-sensor-bridge-firmware/`](az3166-sensor-bridge-firmware/).
+**Stage 1** done · **Stage 2** done · **Stage 3** open · **Stage 4** partial · **Stage 5** open
 
-### 1. Flash the SD card
+</div>
 
-- Tool: [Raspberry Pi Imager](https://www.raspberrypi.com/software/)
-- Image: **Raspberry Pi OS Lite (64-bit)** — 64-bit is required (our
-  container images are built on `debian:bookworm`), "Lite" because the Pi
-  runs headless as a shared server.
-- In the imager's advanced options (gear icon) before writing: set a
-  hostname, **enable SSH**, and set Wi-Fi credentials if you won't use a
-  wired LAN connection for normal network access.
+---
 
-> The Pi needs **two** separate network connections: the onboard
-> Ethernet/Wi-Fi for normal LAN access (so the team can reach the
-> dashboard), and a **separate USB Ethernet adapter** for the automotive
-> Ethernet link to the S32K148. Set up the LAN/Wi-Fi side first (via the
-> imager) — the setup script below only configures the automotive side.
+## Goal
 
-### 2. Hardware checklist (before running the script)
+Build a **Child Presence Detection and Mitigation** feature that:
 
-**S32K148 (automotive Ethernet / DoIP):**
-- [ ] TJA1101 daughterboard jumper removed (Master mode)
-- [ ] Media converter DIP switch set to Slave mode
-- [ ] USB-Ethernet adapter → media converter → TJA1101 → S32K148, plugged
-      directly into the Pi
-- [ ] S32K148 already flashed with the referenceApp + WindowPosition DID
-      (`0xCF20`) — see
-      [`firmware/S32K148_HARDWARE_BRINGUP.md`](firmware/S32K148_HARDWARE_BRINGUP.md)
-      and [`firmware/0001-windowposition-did-0xCF20.patch`](firmware/0001-windowposition-did-0xCF20.patch)
+1. detects that a child is in the car,
+2. monitors cabin temperature,
+3. determines a hazard level,
+4. warns and intervenes (HVAC, windows, alarm, eCall),
 
-**AZ3166 (Eclipse ThreadX sensor bridge, USB-serial):**
-- [ ] AZ3166 already flashed with the ThreadX sensor bridge firmware —
-      flash it from a laptop first (drag-and-drop
-      `az3166-sensor-bridge-firmware/build/az3166-cortexm4/az3166_sensor_bridge.bin`
-      onto the board's ST-Link mass-storage drive; see
-      [`az3166-sensor-bridge-firmware/`](az3166-sensor-bridge-firmware/)).
-      The Pi itself never builds or flashes the firmware, it only reads
-      the board's UART once it's already running.
-- [ ] AZ3166 plugged into the Pi via USB (the same cable carries both the
-      ST-Link session and the UART data channel the bridge reads)
+and keeps working unchanged while the world underneath it is swapped from
+simulators to embedded targets to real hardware.
 
-### 3. Run the setup script
+> ### The Golden Rule
+>
+> **The Guardian Loop business logic must not change between simulation and real hardware.**
+>
+> The Guardian therefore never addresses any of the following directly:
+>
+> | Forbidden inside Guardian | Use instead |
+> |---|---|
+> | CAN, GPIO, serial ports | uProtocol pub/sub on VSS topics |
+> | UDS, DoIP, ECU DIDs | uProtocol RPC to the Actuation Adapter, then CDA |
+> | SOME/IP | a SOME/IP to uProtocol bridge service |
+> | Hardware addresses, device paths | service URIs only |
+>
+> If swapping a sensor or an actuator forces a change to `guardian.rs`, the design is wrong.
 
-SSH into the Pi, then:
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph SENSE["Sense"]
+        CPS["Child Presence<br/>(sim)"]
+        TMP["Temperature<br/>(sim / AZ3166 ThreadX)"]
+    end
+
+    subgraph HPC["AutoSD HPC"]
+        GL["<b>Guardian Loop</b><br/>CLEAR → MONITORING →<br/>WARNING → CRITICAL →<br/>MITIGATING"]
+        AA["Actuation Adapter"]
+        EC["eCall / Notification<br/>(optional)"]
+        LOG["Logging / Diagnostics"]
+    end
+
+    subgraph ACT["Actuate"]
+        CDA["OpenSOVD CDA"]
+        WIN["OpenBSW<br/>Window Controller"]
+        HVAC["ROS 2 HVAC<br/>(Eclipse Muto)"]
+    end
+
+    CPS -->|"uProtocol pub/sub<br/>VSS events"| GL
+    TMP -->|"uProtocol pub/sub<br/>(SOME/IP bridge)"| GL
+    GL -->|"uProtocol RPC"| AA
+    GL -.-> EC
+    GL -.-> LOG
+    AA -->|"diag commands"| CDA
+    AA -->|"setpoints"| HVAC
+    CDA -->|"UDS-style"| WIN
+```
+
+**Transport:** every uProtocol message passes through an Eclipse Zenoh router.
+No service knows where any other service runs, and that is what makes the swap possible.
+
+### Communication patterns
+
+| Pattern | Use it for | Example |
+|---|---|---|
+| **uProtocol pub/sub** | sensor data and state broadcasts: fire and forget, many listeners | temperature event, child-presence event, Guardian state |
+| **uProtocol RPC** | one service asking another to perform an operation and awaiting the result | Guardian to Actuation Adapter: HVAC on, 18 °C, fan 100 %, close window |
+
+---
+
+## Development Journey
+
+The official challenge progression, and where we stand:
+
+| Stage | Objective | Status | Notes |
+|:--:|---|---|---|
+| **1** | **Guardian Loop on your laptop.** Simulated sensors publish over uProtocol, Guardian shows state transitions | **Done** | Inherited from the reference stack. `docker compose up` shows the full escalation in about 30 s |
+| **2** | **Add simulated actuation.** uProtocol RPC to Actuation Adapter, CDA, window controller | **Done** | The SIL loop is closed end to end. The ROS 2 HVAC path is wired up as well |
+| **3** | **Run Guardian on AutoSD.** Same artifact, only deployment and configuration change | **Open** | `deploy/` is still empty. This is our largest gap |
+| **4** | **Replace the temperature simulator.** AZ3166 with Eclipse ThreadX over SOME/IP | **Partial** | Firmware, Renode emulation and the SOME/IP bridge exist. The physical board does not |
+| **5** | **Replace the simulated actuator.** openDuT switches to OpenBSW or physical targets | **Open** | Not started. Requires an openDuT testbench topology |
+
+---
+
+## Our Goals
+
+Ordered by what unblocks the most. Each goal names the stage it serves.
+
+| # | Goal | Serves | Rationale |
+|:--:|---|:--:|---|
+| 1 | **Get openDuT running as our testbench** | Stage 5 | Prerequisite for any hardware-swap demo. It must switch between at least two topologies, fully simulated and with a real endpoint |
+| 2 | **Deploy Guardian on the AutoSD HPC** | Stage 3 | Full-challenge requirement and currently untouched. The proof point is an identical service artifact before and after |
+| 3 | **Move the sensors to real hardware** | Stage 4 | AZ3166 with ThreadX replaces `temperature-sim`, and Guardian must not notice |
+| 4 | **Strengthen the Guardian decision logic** | bonus | Our differentiator beyond the Definition of Done. See below |
+| 5 | **Leverage the ROS 2 and Muto HVAC path** | Stage 2+ | Already present in `ros2-hvac/`. The work is integration and demonstration, not implementation |
+| 6 | **Build the demo narrative along the five stages** | all | Showing the same `evaluate_state` survive every swap is the pitch |
+
+### Guardian logic ideas (goal 4)
+
+- **Rate of change.** A cabin heating at 0.5 °C/s is an emergency long before it crosses 40 °C.
+- **Sensor confidence.** The child-presence event already carries a confidence field, 0.98 in the simulator, and we currently ignore it. Use it to gate escalation.
+- **Redundant sensors.** Fuse several temperature sources and degrade gracefully when one drops out.
+- **Fault tolerance.** The stack already demonstrates an HVAC fault forcing escalation to window and alarm. Generalise that behaviour.
+
+> All of this stays inside `evaluate_state` in `services/src/lib.rs`, and none of it may
+> introduce a transport or hardware dependency. See the Golden Rule.
+
+---
+
+## Building Blocks
+
+| Block | Location | Status |
+|---|---|---|
+| **Guardian Loop**, hazard state machine | `services/src/bin/guardian.rs`, logic in `services/src/lib.rs` | Done |
+| **Child Presence Sensor**, simulated | `services/src/bin/child_presence_sim.rs` | Done, simulated |
+| **Temperature Sensor**, simulated with closed-loop thermal model | `services/src/bin/temperature_sim.rs` | Done, simulated |
+| **Temperature Sensor**, ThreadX firmware | `threadx-temp-sensor/` (Renode) | Partial, emulated |
+| **Temperature Sensor**, AZ3166 hardware | — | Open, board missing |
+| **SOME/IP to uProtocol bridges** | `someip_uprot_bridge.rs`, `someip_window_bridge.rs` | Done |
+| **Actuation Adapter**, uProtocol RPC to diagnostics | `services/src/bin/actuation_adapter.rs` | Done |
+| **OpenSOVD CDA**, diagnostic bridge | `services/src/bin/cda_sim.rs` | Done, simulated |
+| **OpenBSW Window Controller** | `services/src/bin/window_controller_sim.rs` | Done, simulated |
+| **ROS 2 HVAC workload**, Eclipse Muto with CAN bridge | `ros2-hvac/`, `services/src/bin/ros2_hvac_bridge.rs` | Done |
+| **Dashboard**, live one-page view | `services/src/bin/dashboard.rs`, port 8094 | Done |
+| **AutoSD HPC deployment** | `deploy/` | Open |
+| **openDuT topology** | — | Open |
+| **eCall / Notification service** | — | Open, optional |
+
+> Nothing here is written from scratch. The challenge is integration and portability
+> rather than reimplementation; the end-to-end SDV architecture is the point.
+
+---
+
+## Quick Start
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Eclipse-SDV-Hackathon-Chapter-Four/Bare-Metal-Mafia/AZ3166-ThreadX-Sensor/deploy/setup-raspi-guardian-node.sh | bash
+docker compose up --build          # full SIL stack
 ```
 
-This installs Docker, clones this repo, configures the automotive Ethernet
-interface, adds the Pi user to the `dialout` group (for the AZ3166's USB
-serial port), and builds + starts the full stack (first run compiles the
-Rust workspace from scratch — expect it to take a while; later runs reuse
-the Cargo cache and are fast).
+Then open the dashboard at <http://localhost:8094>.
 
-Don't trust piping a script straight into `bash`? Fair — clone first and
-read it, then run it locally:
+The simulators run a scripted scenario at start-up, so every Guardian state appears
+within roughly 30 seconds:
+
+| Time | Event | Guardian state |
+|:--:|---|---|
+| ~1 s | 26 °C, no child | `CLEAR` |
+| ~5 s | child present, confidence 0.98, zone `rear_center` | `MONITORING` |
+| ~5 s | 36 °C | `WARNING` |
+| ~9 s | 43 °C | `CRITICAL`, then `MITIGATING`: HVAC on, 18 °C, fan 100 % |
+| +12 s | HVAC never confirms | `MITIGATING` stage 2: window 25 %, alarm |
+
+Optional profiles:
 
 ```bash
-git clone --branch AZ3166-ThreadX-Sensor https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/Bare-Metal-Mafia.git
-cd Bare-Metal-Mafia
-less deploy/setup-raspi-guardian-node.sh   # read it
-./deploy/setup-raspi-guardian-node.sh
+docker compose --profile ros2 up --build      # adds ROS 2 HVAC via Eclipse Muto
+docker compose --profile threadx up --build   # adds the ThreadX sensor over SOME/IP
 ```
 
-Useful flags: `--local-ip <ip>` / `--prefix <n>` if your automotive Ethernet
-subnet differs from the default `192.168.0.1/24`; `--no-s32k148` and/or
-`--no-az3166` to skip either piece of real hardware (e.g. while it isn't
-plugged in yet) and fall back to the simulated stack for that signal.
-After the Pi user is added to `dialout`, log out/in (or reboot) once for
-that to take effect without `sudo`.
+The full walkthrough is in [docs/Tutorial.md](docs/Tutorial.md).
 
-### 4. Open the dashboard
+---
 
-The script prints the Pi's LAN IP at the end. From any device on the same
-network:
+## Documentation
 
-```
-http://<pi-ip>:8094
-```
+| Document | Read it when |
+|---|---|
+| [docs/Tutorial.md](docs/Tutorial.md) | You want the stack running and explained service by service |
+| [docs/Guardian-loop.md](docs/Guardian-loop.md) | You are building a component and need to know which existing project to copy from |
+| [docs/structure.drawio](docs/structure.drawio) | You need the editable architecture diagram |
 
-Check logs: `docker compose -f ~/Bare-Metal-Mafia/docker-compose.yml logs -f`
-Stop everything: `docker compose -f ~/Bare-Metal-Mafia/docker-compose.yml down`
+---
+
+## Open Dependencies
+
+- **More AZ3166 boards.** Blocks Stage 4 on real hardware.
+- **openDuT testbench access.** Blocks Stage 5.
+- Renode keeps the ThreadX path moving while boards are unavailable.
+
+---
+
+## Definition of Done
+
+**Core challenge**
+
+- [x] Sensor data reaches the Guardian
+- [x] Communication exclusively via service interfaces
+- [x] Guardian evaluates risk and exposes its state on `:8080/state`
+- [x] Guardian can trigger a mitigation action
+- [x] Simulated ECU and actuator integration
+- [x] uProtocol pub/sub implemented
+- [x] uProtocol RPC implemented
+- [x] Guardian operates transport-independently
+- [ ] An endpoint is replaced without touching the business logic, and we demonstrate it
+
+**Full challenge**
+
+- [ ] Guardian running on AutoSD
+- [ ] openDuT manages the topology change
+- [ ] At least one physical embedded endpoint (AZ3166 with ThreadX)
+- [ ] Identical service artifacts before and after the configuration change
+
+## Pi credentials
+
+- Hostname: pi
+- Username: pi
+- Password: pi
+
+Connect via ssh: `ssh pi@pi`
