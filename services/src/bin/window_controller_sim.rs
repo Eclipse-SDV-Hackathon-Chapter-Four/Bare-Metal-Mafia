@@ -12,9 +12,13 @@ use guardian_sil::{
 };
 use serde::Serialize;
 use tokio::net::TcpListener;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 use tracing::{info, warn};
-use up_rust::{UListener, UMessage, UTransport};
+use up_rust::{UListener, UMessage};
+
+// Assisted-by: Anthropic Claude Fable 5.1 (claude-fable-5-1)
+/// Changes arriving within this window are published as one state event.
+const PUBLISH_COALESCE: std::time::Duration = std::time::Duration::from_millis(20);
 
 #[derive(Debug, Default)]
 struct ControllerState {
@@ -35,7 +39,7 @@ struct ControllerSnapshot {
 
 struct UdsWindowListener {
     state: Arc<Mutex<ControllerState>>,
-    transport: Arc<dyn UTransport>,
+    publish: Arc<Notify>,
 }
 
 #[async_trait]
@@ -51,7 +55,8 @@ impl UListener for UdsWindowListener {
                         guard.window_percentage, cmd.request_id
                     );
                 }
-                publish_state(self.transport.clone(), &self.state).await;
+                // Assisted-by: Anthropic Claude Fable 5.1 (claude-fable-5-1)
+                self.publish.notify_one();
             }
             Err(err) => warn!("Invalid UDS window payload: {}", err),
         }
@@ -60,7 +65,7 @@ impl UListener for UdsWindowListener {
 
 struct UdsAlarmListener {
     state: Arc<Mutex<ControllerState>>,
-    transport: Arc<dyn UTransport>,
+    publish: Arc<Notify>,
 }
 
 #[async_trait]
@@ -76,7 +81,8 @@ impl UListener for UdsAlarmListener {
                         guard.alarm_enabled, cmd.request_id
                     );
                 }
-                publish_state(self.transport.clone(), &self.state).await;
+                // Assisted-by: Anthropic Claude Fable 5.1 (claude-fable-5-1)
+                self.publish.notify_one();
             }
             Err(err) => warn!("Invalid UDS alarm payload: {}", err),
         }
@@ -111,13 +117,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     publish_state(transport.clone(), &app_state.state).await;
 
+    // Assisted-by: Anthropic Claude Fable 5.1 (claude-fable-5-1)
+    // All later state events come from this one task. up-transport-zenoh runs
+    // every listener call in its own tokio task, so two events published
+    // back to back (e.g. after a window and an alarm command that arrive
+    // together) can reach any subscriber in either order, and the stale one
+    // would win. Coalescing changes for PUBLISH_COALESCE and publishing once,
+    // sequentially, leaves the final state as the last event on the bus.
+    let publish = Arc::new(Notify::new());
+    {
+        let (transport, state, publish) =
+            (transport.clone(), app_state.state.clone(), publish.clone());
+        tokio::spawn(async move {
+            loop {
+                publish.notified().await;
+                tokio::time::sleep(PUBLISH_COALESCE).await;
+                publish_state(transport.clone(), &state).await;
+            }
+        });
+    }
+
     transport
         .register_listener(
             &uds_window_cmd_uri(),
             None,
             Arc::new(UdsWindowListener {
                 state: app_state.state.clone(),
-                transport: transport.clone(),
+                publish: publish.clone(),
             }),
         )
         .await?;
@@ -128,7 +154,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             None,
             Arc::new(UdsAlarmListener {
                 state: app_state.state.clone(),
-                transport: transport.clone(),
+                publish: publish.clone(),
             }),
         )
         .await?;

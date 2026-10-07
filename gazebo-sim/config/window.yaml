@@ -1,0 +1,36 @@
+# Copyright (c) 2026 Contributors to the Bare-Metal-Mafia project
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License, Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+#
+# AI Disclosure: This file was largely AI-generated. The AI-generated
+# portions are made available under CC0-1.0 and not subject to the
+# project's licence. The human contributor has reviewed and verified
+# that the code is correct.
+#
+# SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
+# Assisted-by: Anthropic Claude Opus 5.5 (claude-opus-5-5)
+
+# Single source of truth for the simulated rear-left window (row 2, left).
+#
+# Window opening is expressed in percent everywhere outside Gazebo:
+#
+#   joint_position_m = closed_position_m + (percent / 100) * travel_m
+#
+#     0 %  -> closed_position_m             (glass fully up, window closed)
+#   100 %  -> closed_position_m + travel_m  (glass fully down, window open)
+#
+# The prismatic joint axis points down, so a larger position means a wider
+# opening. The launch file writes travel_m into the joint's upper limit in
+# worlds/cabin.sdf at start-up, and test-window.sh / tools/sim_check.py use the
+# same values to convert percent to metres. Change it here and nowhere else.
+#
+# travel_m must not exceed 0.40: that is the height of the window opening and
+# of the door panel the glass slides into.
+window_row2_left:
+  joint_name: window_row2_left_joint
+  closed_position_m: 0.0
+  travel_m: 0.40

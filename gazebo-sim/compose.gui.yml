@@ -1,0 +1,36 @@
+# Copyright (c) 2026 Contributors to the Bare-Metal-Mafia project
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License, Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+#
+# AI Disclosure: This file was largely AI-generated. The AI-generated
+# portions are made available under CC0-1.0 and not subject to the
+# project's licence. The human contributor has reviewed and verified
+# that the code is correct.
+#
+# SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
+# Assisted-by: Anthropic Claude Opus 5.5 (claude-opus-5-5)
+
+# Linux-only override: run the Gazebo GUI on the host's X server.
+#
+#   xhost +local:
+#   docker compose -f docker-compose.yml -f gazebo-sim/compose.gui.yml --profile gazebo up --build
+#
+# With GZ_GUI=true the launch file starts the GUI client `ign gazebo -g` next
+# to the headless server `ign gazebo -s -r`. /dev/dri gives the GUI
+# GPU acceleration; without a usable GPU set LIBGL_ALWAYS_SOFTWARE=1 on the
+# host before `up`. macOS and Windows: headless only, do not use this file.
+services:
+  gazebo-sim:
+    environment:
+      GZ_GUI: "true"
+      DISPLAY: ${DISPLAY:-:0}
+      QT_X11_NO_MITSHM: "1"
+      LIBGL_ALWAYS_SOFTWARE: ${LIBGL_ALWAYS_SOFTWARE:-0}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    devices:
+      - /dev/dri:/dev/dri

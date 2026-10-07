@@ -1,0 +1,44 @@
+# Copyright (c) 2026 Contributors to the Bare-Metal-Mafia project
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License, Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+#
+# AI Disclosure: This file was largely AI-generated. The AI-generated
+# portions are made available under CC0-1.0 and not subject to the
+# project's licence. The human contributor has reviewed and verified
+# that the code is correct.
+#
+# SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
+# Assisted-by: Anthropic Claude Opus 5.5 (claude-opus-5-5)
+
+# ros-up-bridge, mode "mirror": Gazebo follows window-controller-sim.
+#
+#   docker compose -f docker-compose.yml -f ros-up-bridge/compose.mirror.yml --profile gazebo up --build
+#   (add -f gazebo-sim/compose.gui.yml after this file for the Linux GUI)
+#
+# The default stack is unchanged; the bridge only subscribes on uProtocol.
+services:
+  gazebo-sim:
+    environment:
+      ROS_UP_BRIDGE_MODE: mirror
+      ROS_UP_BRIDGE_CONFIG: /opt/ros_up_bridge/config/mirror.yaml
+      ZENOH_CONNECT: tcp/zenohd:7447
+
+  ros-up-mapper:
+    build:
+      context: .
+      dockerfile: ros-up-bridge/Dockerfile
+    image: hack-to-the-future/ros-up-mapper:stage-bridge
+    command: ["--config", "/opt/ros_up_bridge/config/mirror.yaml"]
+    environment:
+      RUST_LOG: ros_up_mapper=info,info
+      ZENOH_CONNECT: tcp/zenohd:7447
+    ports:
+      - "8096:8096"
+    depends_on:
+      - zenohd
+    profiles:
+      - gazebo

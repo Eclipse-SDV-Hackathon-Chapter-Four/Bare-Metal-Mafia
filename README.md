@@ -214,6 +214,8 @@ Ordered by what unblocks the most. Each goal names the stage it serves.
 | **OpenBSW Window Controller** | `services/src/bin/window_controller_sim.rs` | Done, simulated |
 | **ROS 2 HVAC workload**, Eclipse Muto with CAN bridge | `ros2-hvac/`, `services/src/bin/ros2_hvac_bridge.rs` | Done |
 | **Dashboard**, live one-page view | `services/src/bin/dashboard.rs`, port 8094 | Done |
+| **Gazebo cabin simulation**, Fortress world (window joint, seat contact) and `ros_gz_bridge`, profile `gazebo`, laptops only | `gazebo-sim/` | Done, **our own work** (not from the reference stack) |
+| **Generic ROS 2 ↔ uProtocol bridge** (`ros-up-bridge`), YAML-mapped; mode *mirror* (Gazebo follows the window state) and *replace* (Gazebo replaces the window controller and child presence simulators) | `ros-up-bridge/`, `services/src/bin/ros_up_mapper/` | Done, **our own work** (not from the reference stack) |
 | **AutoSD HPC deployment** | `deploy/` | Open |
 | **openDuT topology** | — | Open |
 | **eCall / Notification service**, Telegram via EWS WebSocket (Java) | `notification/` | Done, mock |
@@ -247,6 +249,8 @@ Optional profiles:
 ```bash
 docker compose --profile ros2 up --build      # adds ROS 2 HVAC via Eclipse Muto
 docker compose --profile threadx up --build   # adds the ThreadX sensor over SOME/IP
+docker compose --profile gazebo up --build    # adds the Gazebo cabin simulation (see gazebo-sim/README.md)
+COMPOSE_CMD="docker compose" HVAC=1 ./ros-up-bridge/demo-guardian.sh   # Guardian Loop with Gazebo + HVAC, live status lines
 ```
 
 The full walkthrough is in [docs/Tutorial.md](docs/Tutorial.md).
@@ -291,6 +295,51 @@ The full walkthrough is in [docs/Tutorial.md](docs/Tutorial.md).
 - [ ] openDuT manages the topology change
 - [ ] At least one physical embedded endpoint (AZ3166 with ThreadX)
 - [ ] Identical service artifacts before and after the configuration change
+
+## AI Usage
+
+We follow the Eclipse Foundation's
+[Generative Artificial Intelligence Usage Guidelines for Eclipse Committers](https://www.eclipse.org/projects/guidelines/genai)
+(version 1.0, April 2024). In short, the guidelines ask us to be transparent
+about the generative AI platforms we used, to verify the accuracy of
+generated output through our normal vetting (testing, intellectual property
+due diligence, security), and to respect intellectual property and the
+platform's terms of use. They suggest disclosing AI use in a comment just
+below the copyright and licence header.
+
+**Tools used**
+
+| Tool | Used for |
+|---|---|
+| Claude Code with Anthropic Claude Opus 5.5 (`claude-opus-5-5`) | `gazebo-sim/` (Gazebo simulation backend) and most of `ros-up-bridge/` + `services/src/bin/ros_up_mapper/` (ROS 2 ↔ uProtocol bridge): code, configuration, tests and their documentation, plus the related additions to `docker-compose.yml` (the `gazebo-sim` service), to this README and [NOTICE.md](NOTICE.md) |
+| Claude Code with Anthropic Claude Fable 5.1 (`claude-fable-5-1`) | the bridge's replace mode (state/presence routes, runtime single-publisher guard, `compose.replace.yml`, `test-replace.sh`), later parts of mirror (setpoint repeat, test hardening), the separate Gazebo server/GUI start, and the publish-race fix in `services/src/bin/window_controller_sim.rs` (marked with `Assisted-by` comments in that file) |
+
+**How we mark it.** These are our project conventions on top of the
+guidelines, not requirements of the guidelines themselves:
+
+- Files that are largely AI-generated carry a header with the Apache-2.0
+  copyright notice, an *AI Disclosure* paragraph stating that the
+  AI-generated portions are made available under CC0-1.0, the SPDX
+  identifier `Apache-2.0 AND CC0-1.0`, and an `Assisted-by:` line naming the
+  model. See also [NOTICE.md](NOTICE.md).
+- Commits that used AI assistance carry an `Assisted-by:` trailer, e.g.
+  `Assisted-by: Anthropic Claude Opus 5.5 (claude-opus-5-5)`.
+- Files we edited only partly with AI assistance (for example this README or
+  `docker-compose.yml`, which come from the reference stack or from team
+  members) keep their existing headers; the AI-assisted changes are
+  identifiable through the commit trailers.
+
+**Review.** All contributions, AI-assisted or not, are reviewed by a human
+team member before they are merged, and AI-generated code is tested like any
+other code.
+
+**Older commits.** Commits that were pushed before we adopted these
+conventions may have been created with AI assistance but do not carry an
+`Assisted-by:` trailer. We do not rewrite published history to add it.
+
+**AI-generated files without a header.** Files without a comment syntax
+(for example JSON) cannot carry the header and are listed here instead:
+currently none.
 
 ## Pi credentials
 
