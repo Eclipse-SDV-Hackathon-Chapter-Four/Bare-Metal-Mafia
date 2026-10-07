@@ -1,0 +1,11 @@
+# This file was created by Claude Opus 5.5
+
+FROM docker.io/library/eclipse-temurin:21-jdk AS build
+WORKDIR /workspace
+COPY src src
+RUN javac --release 21 -d /workspace/out src/*.java
+
+FROM docker.io/library/eclipse-temurin:21-jre
+WORKDIR /app
+COPY --from=build /workspace/out /app
+ENTRYPOINT ["java", "-cp", "/app", "NotificationService"]

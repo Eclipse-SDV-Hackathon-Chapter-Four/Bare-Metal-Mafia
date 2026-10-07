@@ -130,6 +130,34 @@ It sends a JSON `GuardianState` update every second. The `time` value is Unix
 time in milliseconds, and `state` is the Guardian's current state enum. EWS
 warnings are received as JSON `EWSWarn` messages on the same connection.
 
+#### Notification service
+
+*(Contents of this header was created by Claude Opus 5.5)*
+
+`notification/` is a dependency-free Java service that connects to the EWS WebSocket
+and sends a Telegram message on every Guardian state change. It reconnects if the
+Guardian restarts.
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) and copy the token.
+2. Send the bot a message, then read your chat id from
+   `https://api.telegram.org/bot<token>/getUpdates` (`message.chat.id`).
+3. Put both into `.env` (git-ignored) or export them:
+
+   ```bash
+   TELEGRAM_BOT_TOKEN=123456:ABC...
+   TELEGRAM_CHAT_ID=987654321
+   ```
+
+4. `docker compose up --build` starts the service next to the Guardian.
+
+If either variable is unset, the service runs in dry-run mode and only logs the messages
+(`docker compose logs -f notification`). To run it outside Docker:
+
+```bash
+javac -d notification/out notification/src/*.java
+GUARDIAN_EWS_URL=ws://localhost:8765/ws java -cp notification/out NotificationService
+```
+
 ## Development Journey
 
 The official challenge progression, and where we stand:
@@ -186,7 +214,7 @@ Ordered by what unblocks the most. Each goal names the stage it serves.
 | **Dashboard**, live one-page view | `services/src/bin/dashboard.rs`, port 8094 | Done |
 | **AutoSD HPC deployment** | `deploy/` | Open |
 | **openDuT topology** | — | Open |
-| **eCall / Notification service** | — | Open, optional |
+| **eCall / Notification service**, Telegram via EWS WebSocket (Java) | `notification/` | Done, mock |
 
 > Nothing here is written from scratch. The challenge is integration and portability
 > rather than reimplementation; the end-to-end SDV architecture is the point.

@@ -53,6 +53,18 @@ services:
     depends_on:
       - zenohd
 
+  notification:
+    build:
+      context: ./notification
+      dockerfile: Containerfile
+    image: hack-to-the-future/notification:stage-ecall
+    environment:
+      GUARDIAN_EWS_URL: ws://guardian:8765/ws
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+    depends_on:
+      - guardian
+
   child-presence-sim:
     build:
       context: .
