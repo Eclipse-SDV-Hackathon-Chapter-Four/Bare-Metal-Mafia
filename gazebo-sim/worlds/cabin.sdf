@@ -1,0 +1,310 @@
+<?xml version="1.0"?>
+<!--
+  Minimal Guardian Loop cabin world for Gazebo Fortress (ign-gazebo 6).
+
+  Primitives only: no meshes, no Fuel downloads. Contents:
+    ground_plane   static plane
+    cabin          simplified vehicle cabin, welded to the world
+      body               floor, roof, walls, rear-left door with window opening
+      seat_row2          rear seat; contact sensor on the cushion
+      window_row2_left   rear-left glass on a prismatic joint (axis down = open)
+    child_seat     free box used as a "child seat" test object; starts on the
+                   ground next to the car, moved with gazebo-sim/child-seat.sh
+
+  @WINDOW_TRAVEL_M@ is replaced by the launch file with travel_m from
+  config/window.yaml. Run the world through the launch file, not directly.
+
+  Gazebo-side topics are set explicitly (Fortress defaults would add a joint
+  index or a /world/<name>/ prefix) and must match config/bridge.yaml.
+
+  No Sensors system on purpose: it needs a rendering engine, and the headless
+  container has no GPU. The Contact system covers the seat sensor.
+-->
+<sdf version="1.8">
+  <world name="cabin">
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <plugin filename="ignition-gazebo-physics-system"
+            name="ignition::gazebo::systems::Physics"/>
+    <!-- create / remove / set_pose services, used by child-seat.sh -->
+    <plugin filename="ignition-gazebo-user-commands-system"
+            name="ignition::gazebo::systems::UserCommands"/>
+    <!-- state for the optional GUI client -->
+    <plugin filename="ignition-gazebo-scene-broadcaster-system"
+            name="ignition::gazebo::systems::SceneBroadcaster"/>
+    <!-- publishes contact sensors; physics based, no rendering needed -->
+    <plugin filename="ignition-gazebo-contact-system"
+            name="ignition::gazebo::systems::Contact"/>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>20 20</size></plane></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>20 20</size></plane></geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1</ambient>
+            <diffuse>0.5 0.5 0.5 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!--
+      Cabin frame: x forward, y left, z up, origin on the ground at the cabin
+      centre. Floor top at z = 0.375 (0.35 m ground clearance), roof bottom at
+      z = 1.425. Rear-left window opening: x -0.95..-0.05, z 0.875..1.275.
+    -->
+    <model name="cabin">
+      <joint name="cabin_to_world" type="fixed">
+        <parent>world</parent>
+        <child>body</child>
+      </joint>
+
+      <link name="body">
+        <inertial>
+          <mass>200</mass>
+          <inertia>
+            <ixx>50</ixx><iyy>80</iyy><izz>100</izz>
+            <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+          </inertia>
+        </inertial>
+
+        <collision name="floor_collision">
+          <pose>0 0 0.35 0 0 0</pose>
+          <geometry><box><size>2.0 1.5 0.05</size></box></geometry>
+        </collision>
+        <visual name="floor_visual">
+          <pose>0 0 0.35 0 0 0</pose>
+          <geometry><box><size>2.0 1.5 0.05</size></box></geometry>
+          <material><ambient>0.2 0.2 0.2 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
+        </visual>
+
+        <collision name="roof_collision">
+          <pose>0 0 1.45 0 0 0</pose>
+          <geometry><box><size>2.0 1.5 0.05</size></box></geometry>
+        </collision>
+        <visual name="roof_visual">
+          <pose>0 0 1.45 0 0 0</pose>
+          <geometry><box><size>2.0 1.5 0.05</size></box></geometry>
+          <material><ambient>0.1 0.3 0.6 0.4</ambient><diffuse>0.1 0.3 0.6 0.4</diffuse></material>
+          <transparency>0.6</transparency>
+        </visual>
+
+        <collision name="front_wall_collision">
+          <pose>1.0 0 0.9 0 0 0</pose>
+          <geometry><box><size>0.05 1.5 1.05</size></box></geometry>
+        </collision>
+        <visual name="front_wall_visual">
+          <pose>1.0 0 0.9 0 0 0</pose>
+          <geometry><box><size>0.05 1.5 1.05</size></box></geometry>
+          <material><ambient>0.1 0.3 0.6 1</ambient><diffuse>0.1 0.3 0.6 1</diffuse></material>
+        </visual>
+
+        <collision name="rear_wall_collision">
+          <pose>-1.0 0 0.9 0 0 0</pose>
+          <geometry><box><size>0.05 1.5 1.05</size></box></geometry>
+        </collision>
+        <visual name="rear_wall_visual">
+          <pose>-1.0 0 0.9 0 0 0</pose>
+          <geometry><box><size>0.05 1.5 1.05</size></box></geometry>
+          <material><ambient>0.1 0.3 0.6 1</ambient><diffuse>0.1 0.3 0.6 1</diffuse></material>
+        </visual>
+
+        <collision name="right_wall_collision">
+          <pose>0 -0.75 0.9 0 0 0</pose>
+          <geometry><box><size>2.0 0.05 1.05</size></box></geometry>
+        </collision>
+        <visual name="right_wall_visual">
+          <pose>0 -0.75 0.9 0 0 0</pose>
+          <geometry><box><size>2.0 0.05 1.05</size></box></geometry>
+          <material><ambient>0.1 0.3 0.6 1</ambient><diffuse>0.1 0.3 0.6 1</diffuse></material>
+        </visual>
+
+        <!-- left side, front half: closed panel -->
+        <collision name="left_front_wall_collision">
+          <pose>0.5 0.75 0.9 0 0 0</pose>
+          <geometry><box><size>1.0 0.05 1.05</size></box></geometry>
+        </collision>
+        <visual name="left_front_wall_visual">
+          <pose>0.5 0.75 0.9 0 0 0</pose>
+          <geometry><box><size>1.0 0.05 1.05</size></box></geometry>
+          <material><ambient>0.1 0.3 0.6 1</ambient><diffuse>0.1 0.3 0.6 1</diffuse></material>
+        </visual>
+
+        <!-- left side, rear half: door panel below the opening (glass slides into it) -->
+        <collision name="left_rear_door_collision">
+          <pose>-0.5 0.75 0.625 0 0 0</pose>
+          <geometry><box><size>1.0 0.05 0.5</size></box></geometry>
+        </collision>
+        <visual name="left_rear_door_visual">
+          <pose>-0.5 0.75 0.625 0 0 0</pose>
+          <geometry><box><size>1.0 0.05 0.5</size></box></geometry>
+          <material><ambient>0.1 0.3 0.6 1</ambient><diffuse>0.1 0.3 0.6 1</diffuse></material>
+        </visual>
+
+        <!-- left side, rear half: rail above the opening -->
+        <collision name="left_rear_rail_collision">
+          <pose>-0.5 0.75 1.35 0 0 0</pose>
+          <geometry><box><size>1.0 0.05 0.15</size></box></geometry>
+        </collision>
+        <visual name="left_rear_rail_visual">
+          <pose>-0.5 0.75 1.35 0 0 0</pose>
+          <geometry><box><size>1.0 0.05 0.15</size></box></geometry>
+          <material><ambient>0.1 0.3 0.6 1</ambient><diffuse>0.1 0.3 0.6 1</diffuse></material>
+        </visual>
+      </link>
+
+      <!-- Rear seat, row 2. Cushion top at z = 0.625. -->
+      <link name="seat_row2">
+        <inertial>
+          <pose>-0.65 0 0.6 0 0 0</pose>
+          <mass>20</mass>
+          <inertia>
+            <ixx>3</ixx><iyy>1</iyy><izz>3</izz>
+            <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+          </inertia>
+        </inertial>
+
+        <collision name="seat_row2_base_collision">
+          <pose>-0.6 0 0.45 0 0 0</pose>
+          <geometry><box><size>0.5 1.3 0.15</size></box></geometry>
+        </collision>
+        <visual name="seat_row2_base_visual">
+          <pose>-0.6 0 0.45 0 0 0</pose>
+          <geometry><box><size>0.5 1.3 0.15</size></box></geometry>
+          <material><ambient>0.15 0.15 0.15 1</ambient><diffuse>0.15 0.15 0.15 1</diffuse></material>
+        </visual>
+
+        <collision name="seat_row2_cushion_collision">
+          <pose>-0.6 0 0.575 0 0 0</pose>
+          <geometry><box><size>0.5 1.3 0.1</size></box></geometry>
+        </collision>
+        <visual name="seat_row2_cushion_visual">
+          <pose>-0.6 0 0.575 0 0 0</pose>
+          <geometry><box><size>0.5 1.3 0.1</size></box></geometry>
+          <material><ambient>0.35 0.3 0.25 1</ambient><diffuse>0.35 0.3 0.25 1</diffuse></material>
+        </visual>
+
+        <collision name="seat_row2_backrest_collision">
+          <pose>-0.9 0 0.925 0 0 0</pose>
+          <geometry><box><size>0.1 1.3 0.6</size></box></geometry>
+        </collision>
+        <visual name="seat_row2_backrest_visual">
+          <pose>-0.9 0 0.925 0 0 0</pose>
+          <geometry><box><size>0.1 1.3 0.6</size></box></geometry>
+          <material><ambient>0.35 0.3 0.25 1</ambient><diffuse>0.35 0.3 0.25 1</diffuse></material>
+        </visual>
+
+        <!--
+          Prepared for child presence: reports what touches the cushion.
+          Fortress' Contact system ignores <update_rate> and publishes every
+          physics step (~1 kHz) while in contact, nothing otherwise.
+        -->
+        <sensor name="seat_row2_contact" type="contact">
+          <always_on>true</always_on>
+          <topic>/model/cabin/seat/row2/contact</topic>
+          <contact>
+            <collision>seat_row2_cushion_collision</collision>
+            <topic>/model/cabin/seat/row2/contact</topic>
+          </contact>
+        </sensor>
+      </link>
+
+      <joint name="seat_row2_mount" type="fixed">
+        <parent>body</parent>
+        <child>seat_row2</child>
+      </joint>
+
+      <!--
+        Rear-left window glass. Closed: centred in the opening (z = 1.075).
+        Visual only (no collision) so the glass never fights the door frame.
+        Gravity off so the position controller holds without steady-state error.
+      -->
+      <link name="window_row2_left">
+        <pose>-0.5 0.75 1.075 0 0 0</pose>
+        <gravity>false</gravity>
+        <inertial>
+          <mass>1.0</mass>
+          <inertia>
+            <!-- solid box 0.9 x 0.01 x 0.4 m, m = 1 kg -->
+            <ixx>0.013342</ixx><iyy>0.080833</iyy><izz>0.067508</izz>
+            <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <visual name="glass_visual">
+          <geometry><box><size>0.9 0.01 0.4</size></box></geometry>
+          <material>
+            <ambient>0.6 0.8 0.9 0.5</ambient>
+            <diffuse>0.6 0.8 0.9 0.5</diffuse>
+          </material>
+          <transparency>0.5</transparency>
+        </visual>
+      </link>
+
+      <joint name="window_row2_left_joint" type="prismatic">
+        <parent>body</parent>
+        <child>window_row2_left</child>
+        <axis>
+          <xyz>0 0 -1</xyz>
+          <limit>
+            <lower>0</lower>
+            <upper>@WINDOW_TRAVEL_M@</upper>
+          </limit>
+          <dynamics>
+            <damping>2.0</damping>
+          </dynamics>
+        </axis>
+      </joint>
+
+      <plugin filename="ignition-gazebo-joint-position-controller-system"
+              name="ignition::gazebo::systems::JointPositionController">
+        <joint_name>window_row2_left_joint</joint_name>
+        <topic>/model/cabin/joint/window_row2_left_joint/cmd_pos</topic>
+        <p_gain>200</p_gain>
+        <i_gain>0</i_gain>
+        <d_gain>30</d_gain>
+      </plugin>
+
+      <plugin filename="ignition-gazebo-joint-state-publisher-system"
+              name="ignition::gazebo::systems::JointStatePublisher">
+        <topic>/model/cabin/joint_state</topic>
+        <joint_name>window_row2_left_joint</joint_name>
+      </plugin>
+    </model>
+
+    <!-- Test object: starts on the ground beside the rear-left door (absent). -->
+    <model name="child_seat">
+      <pose>-0.6 2.0 0.15 0 0 0</pose>
+      <link name="link">
+        <inertial>
+          <mass>5.0</mass>
+          <inertia>
+            <ixx>0.104</ixx><iyy>0.104</iyy><izz>0.133</izz>
+            <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="collision">
+          <geometry><box><size>0.4 0.4 0.3</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.4 0.4 0.3</size></box></geometry>
+          <material><ambient>0.9 0.5 0.1 1</ambient><diffuse>0.9 0.5 0.1 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+  </world>
+</sdf>

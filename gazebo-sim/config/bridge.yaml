@@ -1,0 +1,35 @@
+# ros_gz_bridge configuration (parameter_bridge, config_file parameter).
+#
+# Gazebo Fortress message types are written with the ignition.msgs prefix.
+# Gazebo-side topic names are set explicitly in worlds/cabin.sdf; keep both
+# files in sync when renaming.
+
+# Window setpoint in metres of joint travel (see config/window.yaml for the
+# percent mapping) -> JointPositionController.
+- ros_topic_name: /sim/window/row2_left/position_cmd
+  gz_topic_name: /model/cabin/joint/window_row2_left_joint/cmd_pos
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: ignition.msgs.Double
+  direction: ROS_TO_GZ
+
+# Actual joint positions from the JointStatePublisher system.
+- ros_topic_name: /sim/joint_states
+  gz_topic_name: /model/cabin/joint_state
+  ros_type_name: sensor_msgs/msg/JointState
+  gz_type_name: ignition.msgs.Model
+  direction: GZ_TO_ROS
+
+# Row 2 seat cushion contacts. Gazebo only publishes while something touches
+# the cushion; silence means "nothing on the seat".
+- ros_topic_name: /sim/seat/row2/contact
+  gz_topic_name: /model/cabin/seat/row2/contact
+  ros_type_name: ros_gz_interfaces/msg/Contacts
+  gz_type_name: ignition.msgs.Contacts
+  direction: GZ_TO_ROS
+
+# Simulation time.
+- ros_topic_name: /clock
+  gz_topic_name: /clock
+  ros_type_name: rosgraph_msgs/msg/Clock
+  gz_type_name: ignition.msgs.Clock
+  direction: GZ_TO_ROS
