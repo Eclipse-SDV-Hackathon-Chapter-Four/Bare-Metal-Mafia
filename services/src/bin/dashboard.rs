@@ -7,10 +7,10 @@ use axum::response::{Html, IntoResponse};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use guardian_sil::{
-    decode_json_payload, hvac_state_uri, make_uri_provider, open_up_transport,
-    vss_cabin_temperature_uri, vss_child_presence_uri, vss_guardian_state_uri,
-    vss_window_state_uri, CabinTemperatureEvent, ChildPresenceEvent, GuardianSnapshot,
-    HvacStateEvent, WindowStateEvent,
+    az3166_imu_uri, decode_json_payload, hvac_state_uri, make_uri_provider, open_up_transport,
+    s32_window_position_uri, vss_cabin_temperature_uri, vss_child_presence_uri,
+    vss_guardian_state_uri, vss_window_state_uri, Az3166ImuEvent, CabinTemperatureEvent,
+    ChildPresenceEvent, GuardianSnapshot, HvacStateEvent, S32WindowPositionEvent, WindowStateEvent,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -26,6 +26,8 @@ struct DashboardSnapshot {
     cabin_temperature: Option<CabinTemperatureEvent>,
     window_state: Option<WindowStateEvent>,
     hvac_state: Option<HvacStateEvent>,
+    s32_window_position: Option<S32WindowPositionEvent>,
+    az3166_imu: Option<Az3166ImuEvent>,
 }
 
 impl DashboardSnapshot {
@@ -36,6 +38,8 @@ impl DashboardSnapshot {
             cabin_temperature: None,
             window_state: None,
             hvac_state: None,
+            s32_window_position: None,
+            az3166_imu: None,
         }
     }
 }
@@ -70,6 +74,16 @@ struct WindowStateListener {
 }
 
 struct HvacStateListener {
+    snapshot: Arc<Mutex<DashboardSnapshot>>,
+}
+
+struct S32WindowPositionListener {
+    snapshot: Arc<Mutex<DashboardSnapshot>>,
+}
+
+// AZ3166 additions below.
+// Assisted-by: Anthropic Claude (Sonnet 5)
+struct Az3166ImuListener {
     snapshot: Arc<Mutex<DashboardSnapshot>>,
 }
 
@@ -129,6 +143,30 @@ impl UListener for HvacStateListener {
                 self.snapshot.lock().await.hvac_state = Some(event);
             }
             Err(err) => warn!("dashboard failed to decode HVAC state: {}", err),
+        }
+    }
+}
+
+#[async_trait]
+impl UListener for S32WindowPositionListener {
+    async fn on_receive(&self, message: UMessage) {
+        match decode_json_payload::<S32WindowPositionEvent>(&message) {
+            Ok(event) => {
+                self.snapshot.lock().await.s32_window_position = Some(event);
+            }
+            Err(err) => warn!("dashboard failed to decode S32K148 window position: {}", err),
+        }
+    }
+}
+
+#[async_trait]
+impl UListener for Az3166ImuListener {
+    async fn on_receive(&self, message: UMessage) {
+        match decode_json_payload::<Az3166ImuEvent>(&message) {
+            Ok(event) => {
+                self.snapshot.lock().await.az3166_imu = Some(event);
+            }
+            Err(err) => warn!("dashboard failed to decode AZ3166 IMU event: {}", err),
         }
     }
 }
@@ -201,7 +239,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register_listener(
             &hvac_state_uri(),
             None,
-            Arc::new(HvacStateListener { snapshot }),
+            Arc::new(HvacStateListener {
+                snapshot: snapshot.clone(),
+            }),
+        )
+        .await?;
+
+    transport
+        .register_listener(
+            &s32_window_position_uri(),
+            None,
+            Arc::new(S32WindowPositionListener {
+                snapshot: snapshot.clone(),
+            }),
+        )
+        .await?;
+
+    transport
+        .register_listener(
+            &az3166_imu_uri(),
+            None,
+            Arc::new(Az3166ImuListener { snapshot }),
         )
         .await?;
 
@@ -480,6 +538,16 @@ const INDEX_HTML: &str = r#"<!doctype html>
         </div>
       </section>
       <section>
+        <div class="eyebrow">S32K148 Window Position <span class="badge info">Real HW</span></div>
+        <div class="value" id="s32WindowValue">--</div>
+        <div class="meta" id="s32WindowMeta">Waiting for DoIP bridge event.</div>
+      </section>
+      <section>
+        <div class="eyebrow">AZ3166 IMU <span class="badge info">Real HW</span></div>
+        <div class="value" id="az3166Value">--</div>
+        <div class="meta" id="az3166Meta">Waiting for AZ3166 serial bridge event.</div>
+      </section>
+      <section>
         <div class="eyebrow">Observation Links</div>
         <div class="meta">
           <div>Guardian HTTP: <code>localhost:8080/state</code></div>
@@ -533,6 +601,18 @@ const INDEX_HTML: &str = r#"<!doctype html>
         document.getElementById('hvacMeta').textContent = hvac
           ? `Active: ${hvac.air_conditioning_active} | Fault: ${hvac.fault_active} | ts=${hvac.timestamp_ms}`
           : 'Waiting for HVAC state event.';
+
+        const s32Window = state.s32_window_position;
+        document.getElementById('s32WindowValue').textContent = s32Window ? `${s32Window.percentage}%` : '--';
+        document.getElementById('s32WindowMeta').textContent = s32Window
+          ? `Source: ${s32Window.source} (DID 0xCF20 over DoIP) | ts=${s32Window.timestamp_ms}`
+          : 'Waiting for DoIP bridge event.';
+
+        const az3166 = state.az3166_imu;
+        document.getElementById('az3166Value').textContent = az3166 ? `${az3166.die_temperature_celsius.toFixed(1)}°C (die)` : '--';
+        document.getElementById('az3166Meta').textContent = az3166
+          ? `Accel mg: [${az3166.acceleration_mg.map(v => v.toFixed(0)).join(', ')}] | seq=${az3166.seq} | uptime=${az3166.board_uptime_ms}ms`
+          : 'Waiting for AZ3166 serial bridge event.';
       } catch (err) {
         console.error(err);
       }
