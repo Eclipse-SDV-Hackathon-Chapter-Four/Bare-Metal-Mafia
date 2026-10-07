@@ -28,9 +28,8 @@
    process, and the forked server intermittently hung before loading the
    world. Closing the GUI window still stops the container.
 3. Starts ros_gz_bridge's parameter_bridge with config/bridge.yaml.
-4. Only if ROS_UP_BRIDGE_MODE is mirror or replace: starts the ROS side of
-   ros-up-bridge (ros_zenoh_bridge.py) with ROS_UP_BRIDGE_CONFIG. Without
-   the variable the container behaves exactly as before.
+4. Unless GAZEBO_BRIDGE=0: starts bridge/ros_zenoh_bridge.py, the ROS side
+   of the connection to the Guardian stack (Zenoh at ZENOH_CONNECT).
 
 If either process exits, the whole launch shuts down so the container stops
 instead of running half a simulation.
@@ -50,7 +49,6 @@ from launch_ros.actions import Node
 DEFAULT_SHARE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RENDER_DIR = '/tmp/gazebo_sim'
 TRAVEL_PLACEHOLDER = '@WINDOW_TRAVEL_M@'
-ROS_UP_BRIDGE_SCRIPT = '/opt/ros_up_bridge/ros_side/ros_zenoh_bridge.py'
 
 
 def _truthy(value):
@@ -100,14 +98,9 @@ def _launch_setup(context):
                  '--gui-config', os.path.join(share, 'config', 'gui.config')],
             name='gazebo_gui', output='screen'), 'gazebo_gui'))
 
-    mode = os.environ.get('ROS_UP_BRIDGE_MODE', '').strip().lower()
-    if mode:
-        if mode not in ('mirror', 'replace'):
-            raise RuntimeError(f'ROS_UP_BRIDGE_MODE={mode}: expected mirror or replace')
-        mapping = os.environ.get('ROS_UP_BRIDGE_CONFIG',
-                                 f'/opt/ros_up_bridge/config/{mode}.yaml')
+    if _truthy(os.environ.get('GAZEBO_BRIDGE', '1')):
         processes.append((ExecuteProcess(
-            cmd=['python3', ROS_UP_BRIDGE_SCRIPT, '--config', mapping],
+            cmd=['python3', os.path.join(share, 'bridge', 'ros_zenoh_bridge.py')],
             name='ros_zenoh_bridge', output='screen'), 'ros_zenoh_bridge'))
 
     shutdown_on_exit = [
