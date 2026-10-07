@@ -301,7 +301,7 @@ case "${CMD}" in
     start replace "${svcs[@]}"
     if [ "${HVAC}" = 1 ]; then
       say "Waiting for the ROS 2 HVAC (Eclipse Muto deploys it, up to 3 min)"
-      wait_for 180 curl -fsS --max-time 2 localhost:18081/api/state -o /dev/null \
+      wait_for 180 curl -fs --max-time 2 localhost:18081/api/state -o /dev/null \
         || echo "   HVAC console not reachable, continuing without it"
       fault off >/dev/null 2>&1
     fi
