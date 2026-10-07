@@ -1,0 +1,66 @@
+diff --git a/executables/referenceApp/application/include/systems/UdsSystem.h b/executables/referenceApp/application/include/systems/UdsSystem.h
+index cac2a55..310f987 100644
+--- a/executables/referenceApp/application/include/systems/UdsSystem.h
++++ b/executables/referenceApp/application/include/systems/UdsSystem.h
+@@ -118,6 +118,9 @@ private:
+     ReadIdentifierFromMemory _read22Cf01;
+     ReadIdentifierPot _read22Cf02;
+     WriteIdentifierToMemory _write2eCf03;
++    // CF20 - WindowPosition (0..100%), Guardian Loop actuation target.
++    ReadIdentifierFromMemory _readCf20WindowPosition;
++    WriteIdentifierToMemory _writeCf20WindowPosition;
+ #ifdef PLATFORM_SUPPORT_UDS_DEMO_SERVICES
+     ReadIdentifierFromMemory _readF190;
+     DemoWriteVin _writeF190;
+diff --git a/executables/referenceApp/application/src/systems/UdsSystem.cpp b/executables/referenceApp/application/src/systems/UdsSystem.cpp
+index c1b4121..94059bc 100644
+--- a/executables/referenceApp/application/src/systems/UdsSystem.cpp
++++ b/executables/referenceApp/application/src/systems/UdsSystem.cpp
+@@ -25,6 +25,12 @@ uint8_t const responseData22Cf01[]
+ 
+ etl::array<uint8_t, 3> storedData2eCf03 = {0};
+ 
++// CF20 - WindowPosition (0..100%). Guardian Loop writes the target via
++// WriteDataByIdentifier(0x2E); reads back via ReadDataByIdentifier(0x22)
++// to confirm the actuation landed. Backing store only for now - wire to
++// a real actuator (PWM/relay/LED) once the physical target is available.
++etl::array<uint8_t, 1> storedWindowPosition = {0};
++
+ #ifdef PLATFORM_SUPPORT_UDS_DEMO_SERVICES
+ // VIN (DID F190) - 17-byte writable scratchpad.
+ etl::array<uint8_t, 17> vinData
+@@ -84,6 +90,8 @@ UdsSystem::UdsSystem(
+ , _read22Cf01(0xCF01, responseData22Cf01)
+ , _read22Cf02()
+ , _write2eCf03(0xCF03, storedData2eCf03)
++, _readCf20WindowPosition(0xCF20, storedWindowPosition)
++, _writeCf20WindowPosition(0xCF20, storedWindowPosition)
+ #ifdef PLATFORM_SUPPORT_UDS_DEMO_SERVICES
+ , _readF190(0xF190, ::etl::span<uint8_t const>(vinData.data(), vinData.size()))
+ , _writeF190(0xF190, ::etl::span<uint8_t>(vinData.data(), vinData.size()))
+@@ -172,10 +180,12 @@ void UdsSystem::addDiagJobs()
+     (void)_jobRoot.addAbstractDiagJob(_readDataByIdentifier);
+     (void)_jobRoot.addAbstractDiagJob(_read22Cf01);
+     (void)_jobRoot.addAbstractDiagJob(_read22Cf02);
++    (void)_jobRoot.addAbstractDiagJob(_readCf20WindowPosition);
+ 
+     // 2E - WriteDataByIdentifier
+     (void)_jobRoot.addAbstractDiagJob(_writeDataByIdentifier);
+     (void)_jobRoot.addAbstractDiagJob(_write2eCf03);
++    (void)_jobRoot.addAbstractDiagJob(_writeCf20WindowPosition);
+ 
+     // 31 - Routine Control
+     (void)_jobRoot.addAbstractDiagJob(_routineControl);
+@@ -243,10 +253,12 @@ void UdsSystem::removeDiagJobs()
+     _jobRoot.removeAbstractDiagJob(_readDataByIdentifier);
+     _jobRoot.removeAbstractDiagJob(_read22Cf01);
+     _jobRoot.removeAbstractDiagJob(_read22Cf02);
++    _jobRoot.removeAbstractDiagJob(_readCf20WindowPosition);
+ 
+     // 2E - WriteDataByIdentifier
+     _jobRoot.removeAbstractDiagJob(_writeDataByIdentifier);
+     _jobRoot.removeAbstractDiagJob(_write2eCf03);
++    _jobRoot.removeAbstractDiagJob(_writeCf20WindowPosition);
+ 
+     // 31 - Routine Control
+     _jobRoot.removeAbstractDiagJob(_routineControl);

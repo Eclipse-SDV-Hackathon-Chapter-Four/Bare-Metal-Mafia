@@ -25,6 +25,10 @@ pub const TOPIC_HVAC_SET_TEMPERATURE: &str =
 pub const TOPIC_HVAC_ACTIVE_STATE: &str =
     "up/sdv/guardian/vss/Vehicle.Cabin.HVAC.IsAirConditioningActive";
 pub const TOPIC_HVAC_STATE: &str = "up/sdv/guardian/hvac/state";
+pub const TOPIC_S32_WINDOW_POSITION: &str = "up/sdv/guardian/s32k148/window_position";
+// AZ3166 additions below.
+// Assisted-by: Anthropic Claude (Sonnet 5)
+pub const TOPIC_AZ3166_IMU: &str = "up/sdv/guardian/az3166/imu";
 
 pub const RID_CHILD_PRESENCE_EVENT: u16 = 0x9001;
 pub const RID_CABIN_TEMPERATURE_EVENT: u16 = 0x9002;
@@ -33,6 +37,8 @@ pub const RID_WINDOW_STATE_EVENT: u16 = 0x9004;
 pub const RID_HVAC_SET_TEMPERATURE_EVENT: u16 = 0x9005;
 pub const RID_HVAC_ACTIVE_STATE_EVENT: u16 = 0x9006;
 pub const RID_HVAC_STATE_EVENT: u16 = 0x9007;
+pub const RID_S32_WINDOW_POSITION_EVENT: u16 = 0x9008;
+pub const RID_AZ3166_IMU_EVENT: u16 = 0x9009;
 
 pub const RID_DIAG_WINDOW_CMD_EVENT: u16 = 0x9010;
 pub const RID_DIAG_ALARM_CMD_EVENT: u16 = 0x9011;
@@ -151,6 +157,34 @@ pub struct HvacStateEvent {
     pub timestamp_ms: u64,
 }
 
+/// WindowPosition (DID 0xCF20) read from the real S32K148 OpenBSW ECU over
+/// DoIP/UDS. Separate from `WindowStateEvent` (which is published by the
+/// simulated `window_controller_sim`) so the dashboard can show both the
+/// simulated actuator and the real hardware side by side without either one
+/// overwriting the other.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct S32WindowPositionEvent {
+    pub percentage: u8,
+    pub source: String,
+    pub timestamp_ms: u64,
+}
+
+/// LSM6DSL reading from the real MXChip AZ3166 (Eclipse ThreadX), dashboard-only
+/// detail. Note: `die_temperature_celsius` is the accelerometer chip's own die
+/// temperature, not true ambient cabin air temperature - it is published
+/// separately here for inspection. The Guardian-relevant value is republished
+/// by the same bridge onto the *existing* `CabinTemperatureEvent`/
+/// `vss_cabin_temperature_uri()` topic (same one `temperature_sim` uses), so
+/// Guardian's real decision logic reacts to it without any `guardian.rs` change.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Az3166ImuEvent {
+    pub acceleration_mg: [f32; 3],
+    pub die_temperature_celsius: f32,
+    pub seq: u32,
+    pub board_uptime_ms: u64,
+    pub timestamp_ms: u64,
+}
+
 pub fn vss_child_presence_uri() -> UUri {
     UUri::try_from_parts("guardian-vss", 0x9000, 0x01, RID_CHILD_PRESENCE_EVENT).unwrap()
 }
@@ -177,6 +211,14 @@ pub fn vss_hvac_active_state_uri() -> UUri {
 
 pub fn hvac_state_uri() -> UUri {
     UUri::try_from_parts("guardian-hvac", 0x9005, 0x01, RID_HVAC_STATE_EVENT).unwrap()
+}
+
+pub fn s32_window_position_uri() -> UUri {
+    UUri::try_from_parts("guardian-vss", 0x9000, 0x01, RID_S32_WINDOW_POSITION_EVENT).unwrap()
+}
+
+pub fn az3166_imu_uri() -> UUri {
+    UUri::try_from_parts("guardian-vss", 0x9000, 0x01, RID_AZ3166_IMU_EVENT).unwrap()
 }
 
 pub fn diag_window_cmd_uri() -> UUri {
@@ -278,10 +320,12 @@ pub fn evaluate_state(child_present: bool, temperature_celsius: f32, ews_warn: b
         return GuardianState::Clear;
     }
 
-    if temperature_celsius >= 40.0 {
-        return GuardianState::Critical;
-    } else if temperature_celsius >= 32.0 {
-        return GuardianState::Warning;
+    if temperature_celsius >= 28.5 {
+        GuardianState::Critical
+    } else if temperature_celsius >= 25.0 {
+        GuardianState::Warning
+    } else {
+        GuardianState::Monitoring
     }
 
     if ews_warn {

@@ -17,7 +17,10 @@ RUN mkdir -p services/src/bin \
     && printf "fn main() {}\n" > services/src/bin/someip_uprot_bridge.rs \
     && printf "fn main() {}\n" > services/src/bin/someip_window_bridge.rs \
     && printf "fn main() {}\n" > services/src/bin/ros2_hvac_bridge.rs \
-    && printf "fn main() {}\n" > services/src/bin/dashboard.rs
+    && printf "fn main() {}\n" > services/src/bin/dashboard.rs \
+    && printf "fn main() {}\n" > services/src/bin/s32k148_doip_bridge.rs \
+    && printf "fn main() {}\n" > services/src/bin/az3166_serial_bridge.rs
+    # az3166_serial_bridge placeholder above. Assisted-by: Anthropic Claude (Sonnet 5)
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
