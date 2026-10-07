@@ -77,8 +77,9 @@ together. (Not as one `ign gazebo -r <world>`: there the ign Ruby wrapper
 forks both from one multi-threaded process, and the forked server
 intermittently hung before loading the world.) The GUI uses
 [`config/gui.config`](config/gui.config): the camera starts outside the
-car, above the rear-left door, so you see the window face-on and look into
-the cabin from above (the cabin has no roof visual for that reason). Orbit
+car on its left side, slightly above it, so you see the rear-left window
+face-on, look into the open-top cabin and see the child seat next to the
+car. Orbit
 with the mouse; the camera button (or service `/gui/screenshot`) saves a PNG
 inside the container. Closing the GUI window stops the simulation and the
 container (the launch file shuts everything down when one process exits).
@@ -100,15 +101,23 @@ Use the topics and the test script instead. WSLg may work but is untested.
 
 ## What is in the world
 
-`worlds/cabin.sdf`, primitives only (no meshes, no Fuel downloads):
+`worlds/cabin.sdf`, primitives only (no meshes, no Fuel downloads): an
+open-top car (convertible, no roof, so the GUI can look inside) parked in a
+parent-and-child bay of a small parking lot.
 
 | Entity | Notes |
 |---|---|
-| `ground_plane` | static |
-| `cabin` / `body` | floor, roof (collision only, invisible), walls, rear-left door with a window opening, welded to the world |
+| `ground_plane` | asphalt |
+| `parking_lot` | static, visual only: bay markings, the blue parent-and-child bay with sign, curb, green strip, trees, street lamp |
+| `parked_car_1`, `parked_car_2` | static neighbours in the bays to the right, visual only |
+| `cabin` / `body` | our car, welded to the world: floor, doors up to the belt line, hood, trunk, windshield, fixed frameless side windows, front seats, steering wheel, wheels, lights, mirrors, plates |
 | `cabin` / `seat_row2` | rear seat (base, cushion, backrest); **contact sensor** on the cushion collision |
-| `cabin` / `window_row2_left` | glass on the prismatic joint `window_row2_left_joint`, axis pointing down, `<gravity>false</gravity>`, visual only (no collision) |
-| `child_seat` | a toddler (primitives: head, torso, arms, legs) in an orange child seat; one free rigid body, only the seat base and backrest collide. Starts on the ground beside the rear-left door |
+| `cabin` / `window_row2_left` | rear-left glass on the prismatic joint `window_row2_left_joint`, axis pointing down (slides into the rear-left door), `<gravity>false</gravity>`, visual only (no collision) |
+| `child_seat` | a toddler in a child seat (head, torso, arms, legs; orange seat shell) on one free rigid body; only the seat base and backrest collide. Starts on the ground beside the rear-left door |
+
+The functional geometry is fixed: interior floor top z 0.375, seat cushion
+top z 0.625 at x -0.6, window opening x -0.95..-0.05 / z 0.875..1.275, and
+all joint and topic names. Purely visual parts can be changed freely.
 
 World systems: Physics, UserCommands (for `set_pose`), SceneBroadcaster (for
 the GUI), Contact. Model systems: JointPositionController and

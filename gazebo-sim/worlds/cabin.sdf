@@ -15,20 +15,30 @@
 
   SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
   Assisted-by: Anthropic Claude Opus 5.5 (claude-opus-5-5)
+  Assisted-by: Anthropic Claude Fable 5.1 (claude-fable-5-1)
 -->
 
 <!--
-  Minimal Guardian Loop cabin world for Gazebo Fortress (ign-gazebo 6).
+  Guardian Loop cabin world for Gazebo Fortress (ign-gazebo 6): an open-top
+  car (convertible, no roof) in a parent-and-child bay of a parking lot.
 
   Primitives only: no meshes, no Fuel downloads. Contents:
-    ground_plane   static plane
-    cabin          simplified vehicle cabin, welded to the world
-      body               floor, roof, walls, rear-left door with window opening
+    ground_plane    asphalt
+    parking_lot     static: bay markings, curb, trees, lamp (visual only)
+    parked_car_1/2  static neighbours in the bays to the right (visual only)
+    cabin           our car, welded to the world
+      body               floor, doors (belt line z 0.875), hood, trunk,
+                         windshield, fixed side windows, front seats, wheels
       seat_row2          rear seat; contact sensor on the cushion
-      window_row2_left   rear-left glass on a prismatic joint (axis down = open)
-    child_seat     a toddler in a child seat (visual) on a free rigid body;
-                   starts on the ground next to the car, moved with
-                   gazebo-sim/child-seat.sh
+      window_row2_left   rear-left glass on a prismatic joint (axis down =
+                         open); slides into the rear-left door
+    child_seat      a toddler in a child seat (visual) on a free rigid body;
+                    starts on the ground next to the car, moved with
+                    gazebo-sim/child-seat.sh
+
+  The functional geometry (floor top z 0.375, seat cushion top z 0.625 at
+  x -0.6, window opening x -0.95..-0.05 / z 0.875..1.275, joint and topic
+  names) is the same as before; only the look changed.
 
   @WINDOW_TRAVEL_M@ is replaced by the launch file with travel_m from
   config/window.yaml. Run the world through the launch file, not directly.
@@ -58,34 +68,350 @@
     <plugin filename="ignition-gazebo-contact-system"
             name="ignition::gazebo::systems::Contact"/>
 
+    <scene>
+      <ambient>0.45 0.45 0.45 1</ambient>
+      <background>0.62 0.76 0.9 1</background>
+      <shadows>true</shadows>
+      <grid>false</grid>
+    </scene>
+
     <light type="directional" name="sun">
       <cast_shadows>true</cast_shadows>
       <pose>0 0 10 0 0 0</pose>
-      <diffuse>0.8 0.8 0.8 1</diffuse>
-      <specular>0.2 0.2 0.2 1</specular>
-      <direction>-0.5 0.1 -0.9</direction>
+      <diffuse>0.9 0.88 0.82 1</diffuse>
+      <specular>0.3 0.3 0.3 1</specular>
+      <direction>-0.4 0.3 -0.85</direction>
     </light>
 
     <model name="ground_plane">
       <static>true</static>
       <link name="link">
         <collision name="collision">
-          <geometry><plane><normal>0 0 1</normal><size>20 20</size></plane></geometry>
+          <geometry><plane><normal>0 0 1</normal><size>60 60</size></plane></geometry>
         </collision>
         <visual name="visual">
-          <geometry><plane><normal>0 0 1</normal><size>20 20</size></plane></geometry>
-          <material>
-            <ambient>0.5 0.5 0.5 1</ambient>
-            <diffuse>0.5 0.5 0.5 1</diffuse>
-          </material>
+          <geometry><plane><normal>0 0 1</normal><size>60 60</size></plane></geometry>
+          <material><ambient>0.16 0.16 0.17 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse><specular>0.05 0.05 0.05 1</specular></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="parking_lot">
+      <static>true</static>
+      <link name="link">
+        <visual name="bay_line_0">
+          <pose>0 -8.5 0.004 0 0 0</pose>
+          <geometry><box><size>5.2 0.12 0.008</size></box></geometry>
+          <material><ambient>0.85 0.85 0.85 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse><specular>0.1 0.1 0.1 1</specular></material>
+        </visual>
+        <visual name="bay_line_1">
+          <pose>0 -5.1 0.004 0 0 0</pose>
+          <geometry><box><size>5.2 0.12 0.008</size></box></geometry>
+          <material><ambient>0.85 0.85 0.85 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse><specular>0.1 0.1 0.1 1</specular></material>
+        </visual>
+        <visual name="bay_line_2">
+          <pose>0 -1.7 0.004 0 0 0</pose>
+          <geometry><box><size>5.2 0.12 0.008</size></box></geometry>
+          <material><ambient>0.85 0.85 0.85 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse><specular>0.1 0.1 0.1 1</specular></material>
+        </visual>
+        <visual name="bay_line_3">
+          <pose>0 1.7 0.004 0 0 0</pose>
+          <geometry><box><size>5.2 0.12 0.008</size></box></geometry>
+          <material><ambient>0.85 0.85 0.85 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse><specular>0.1 0.1 0.1 1</specular></material>
+        </visual>
+        <visual name="bay_line_4">
+          <pose>0 5.1 0.004 0 0 0</pose>
+          <geometry><box><size>5.2 0.12 0.008</size></box></geometry>
+          <material><ambient>0.85 0.85 0.85 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse><specular>0.1 0.1 0.1 1</specular></material>
+        </visual>
+        <visual name="bay_end_line">
+          <pose>-2.6 -1.7 0.004 0 0 0</pose>
+          <geometry><box><size>0.12 13.6 0.008</size></box></geometry>
+          <material><ambient>0.85 0.85 0.85 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse><specular>0.1 0.1 0.1 1</specular></material>
+        </visual>
+        <visual name="bay_family">
+          <pose>0 0 0.002 0 0 0</pose>
+          <geometry><box><size>5.1 3.28 0.004</size></box></geometry>
+          <material><ambient>0.12 0.3 0.45 1</ambient><diffuse>0.15 0.38 0.6 1</diffuse><specular>0.05 0.05 0.05 1</specular></material>
+        </visual>
+        <visual name="family_sign_post">
+          <pose>-2.75 1.55 0.6 0 0 0</pose>
+          <geometry><cylinder><radius>0.03</radius><length>1.2</length></cylinder></geometry>
+          <material><ambient>0.3 0.32 0.34 1</ambient><diffuse>0.42 0.44 0.46 1</diffuse><specular>0.4 0.4 0.4 1</specular></material>
+        </visual>
+        <visual name="family_sign">
+          <pose>-2.75 1.55 1.3 0 0 0</pose>
+          <geometry><box><size>0.02 0.4 0.4</size></box></geometry>
+          <material><ambient>0.12 0.3 0.45 1</ambient><diffuse>0.15 0.38 0.6 1</diffuse><specular>0.05 0.05 0.05 1</specular></material>
+        </visual>
+        <visual name="aisle_line">
+          <pose>4.3 0 0.004 0 0 0</pose>
+          <geometry><box><size>0.1 17 0.008</size></box></geometry>
+          <material><ambient>0.85 0.85 0.85 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse><specular>0.1 0.1 0.1 1</specular></material>
+        </visual>
+        <visual name="curb">
+          <pose>-3.05 0 0.075 0 0 0</pose>
+          <geometry><box><size>0.3 18 0.15</size></box></geometry>
+          <material><ambient>0.5 0.5 0.48 1</ambient><diffuse>0.62 0.62 0.6 1</diffuse><specular>0.05 0.05 0.05 1</specular></material>
+        </visual>
+        <visual name="green_strip">
+          <pose>-4.7 0 0.05 0 0 0</pose>
+          <geometry><box><size>3.0 18 0.1</size></box></geometry>
+          <material><ambient>0.15 0.32 0.1 1</ambient><diffuse>0.22 0.45 0.15 1</diffuse><specular>0.02 0.02 0.02 1</specular></material>
+        </visual>
+        <visual name="tree_0_trunk">
+          <pose>-4.7 -6.5 1.2 0 0 0</pose>
+          <geometry><cylinder><radius>0.14</radius><length>2.4</length></cylinder></geometry>
+          <material><ambient>0.25 0.16 0.08 1</ambient><diffuse>0.35 0.23 0.12 1</diffuse><specular>0.02 0.02 0.02 1</specular></material>
+        </visual>
+        <visual name="tree_0_crown">
+          <pose>-4.7 -6.5 3.0 0 0 0</pose>
+          <geometry><sphere><radius>1.3</radius></sphere></geometry>
+          <material><ambient>0.1 0.3 0.08 1</ambient><diffuse>0.16 0.45 0.12 1</diffuse><specular>0.02 0.02 0.02 1</specular></material>
+        </visual>
+        <visual name="tree_1_trunk">
+          <pose>-4.7 0.5 1.2 0 0 0</pose>
+          <geometry><cylinder><radius>0.14</radius><length>2.4</length></cylinder></geometry>
+          <material><ambient>0.25 0.16 0.08 1</ambient><diffuse>0.35 0.23 0.12 1</diffuse><specular>0.02 0.02 0.02 1</specular></material>
+        </visual>
+        <visual name="tree_1_crown">
+          <pose>-4.7 0.5 3.0 0 0 0</pose>
+          <geometry><sphere><radius>1.3</radius></sphere></geometry>
+          <material><ambient>0.1 0.3 0.08 1</ambient><diffuse>0.16 0.45 0.12 1</diffuse><specular>0.02 0.02 0.02 1</specular></material>
+        </visual>
+        <visual name="tree_2_trunk">
+          <pose>-4.7 7.0 1.2 0 0 0</pose>
+          <geometry><cylinder><radius>0.14</radius><length>2.4</length></cylinder></geometry>
+          <material><ambient>0.25 0.16 0.08 1</ambient><diffuse>0.35 0.23 0.12 1</diffuse><specular>0.02 0.02 0.02 1</specular></material>
+        </visual>
+        <visual name="tree_2_crown">
+          <pose>-4.7 7.0 3.0 0 0 0</pose>
+          <geometry><sphere><radius>1.3</radius></sphere></geometry>
+          <material><ambient>0.1 0.3 0.08 1</ambient><diffuse>0.16 0.45 0.12 1</diffuse><specular>0.02 0.02 0.02 1</specular></material>
+        </visual>
+        <visual name="lamp_pole">
+          <pose>-3.6 4.0 2.75 0 0 0</pose>
+          <geometry><cylinder><radius>0.07</radius><length>5.5</length></cylinder></geometry>
+          <material><ambient>0.3 0.32 0.34 1</ambient><diffuse>0.42 0.44 0.46 1</diffuse><specular>0.4 0.4 0.4 1</specular></material>
+        </visual>
+        <visual name="lamp_arm">
+          <pose>-3.1 4.0 5.45 0 0 0</pose>
+          <geometry><box><size>1.0 0.1 0.08</size></box></geometry>
+          <material><ambient>0.3 0.32 0.34 1</ambient><diffuse>0.42 0.44 0.46 1</diffuse><specular>0.4 0.4 0.4 1</specular></material>
+        </visual>
+        <visual name="lamp_head">
+          <pose>-2.65 4.0 5.38 0 0 0</pose>
+          <geometry><box><size>0.5 0.3 0.1</size></box></geometry>
+          <material><ambient>0.9 0.9 0.8 1</ambient><diffuse>1 1 0.9 1</diffuse><emissive>0.8 0.8 0.65 1</emissive></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="parked_car_1">
+      <static>true</static>
+      <pose>0 -3.4 0 0 0 0</pose>
+      <link name="link">
+        <visual name="body">
+          <pose>0.1 0 0.62 0 0 0</pose>
+          <geometry><box><size>4.2 1.62 0.55</size></box></geometry>
+          <material><ambient>0.45 0.46 0.48 1</ambient><diffuse>0.62 0.63 0.66 1</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+        </visual>
+        <visual name="cabin">
+          <pose>-0.25 0 1.1 0 0 0</pose>
+          <geometry><box><size>2.1 1.45 0.45</size></box></geometry>
+          <material><ambient>0.45 0.46 0.48 1</ambient><diffuse>0.62 0.63 0.66 1</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+        </visual>
+        <visual name="glass_left">
+          <pose>-0.25 0.727 1.1 0 0 0</pose>
+          <geometry><box><size>1.9 0.01 0.35</size></box></geometry>
+          <material><ambient>0.25 0.45 0.55 0.35</ambient><diffuse>0.35 0.6 0.7 0.35</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+          <transparency>0.55</transparency>
+        </visual>
+        <visual name="glass_right">
+          <pose>-0.25 -0.727 1.1 0 0 0</pose>
+          <geometry><box><size>1.9 0.01 0.35</size></box></geometry>
+          <material><ambient>0.25 0.45 0.55 0.35</ambient><diffuse>0.35 0.6 0.7 0.35</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+          <transparency>0.55</transparency>
+        </visual>
+        <visual name="windshield">
+          <pose>0.81 0 1.1 0 -0.6 0</pose>
+          <geometry><box><size>0.02 1.35 0.5</size></box></geometry>
+          <material><ambient>0.25 0.45 0.55 0.35</ambient><diffuse>0.35 0.6 0.7 0.35</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+          <transparency>0.55</transparency>
+        </visual>
+        <visual name="rear_window">
+          <pose>-1.31 0 1.1 0 0.6 0</pose>
+          <geometry><box><size>0.02 1.35 0.45</size></box></geometry>
+          <material><ambient>0.25 0.45 0.55 0.35</ambient><diffuse>0.35 0.6 0.7 0.35</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+          <transparency>0.55</transparency>
+        </visual>
+        <visual name="bumper_front">
+          <pose>2.2 0 0.42 0 0 0</pose>
+          <geometry><box><size>0.12 1.62 0.2</size></box></geometry>
+          <material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.06 0.06 0.06 1</diffuse><specular>0.2 0.2 0.2 1</specular></material>
+        </visual>
+        <visual name="bumper_rear">
+          <pose>-2.0 0 0.42 0 0 0</pose>
+          <geometry><box><size>0.12 1.62 0.2</size></box></geometry>
+          <material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.06 0.06 0.06 1</diffuse><specular>0.2 0.2 0.2 1</specular></material>
+        </visual>
+        <visual name="headlight_left">
+          <pose>2.205 0.55 0.68 0 0 0</pose>
+          <geometry><box><size>0.02 0.3 0.1</size></box></geometry>
+          <material><ambient>0.9 0.9 0.8 1</ambient><diffuse>1 1 0.9 1</diffuse><emissive>0.9 0.9 0.75 1</emissive></material>
+        </visual>
+        <visual name="headlight_right">
+          <pose>2.205 -0.55 0.68 0 0 0</pose>
+          <geometry><box><size>0.02 0.3 0.1</size></box></geometry>
+          <material><ambient>0.9 0.9 0.8 1</ambient><diffuse>1 1 0.9 1</diffuse><emissive>0.9 0.9 0.75 1</emissive></material>
+        </visual>
+        <visual name="wheel_front_left">
+          <pose>1.5 0.82 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.33</radius><length>0.24</length></cylinder></geometry>
+          <material><ambient>0.04 0.04 0.04 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse><specular>0.05 0.05 0.05 1</specular></material>
+        </visual>
+        <visual name="hub_front_left">
+          <pose>1.5 0.82 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.19</radius><length>0.26</length></cylinder></geometry>
+          <material><ambient>0.6 0.6 0.62 1</ambient><diffuse>0.75 0.75 0.78 1</diffuse><specular>1 1 1 1</specular></material>
+        </visual>
+        <visual name="wheel_front_right">
+          <pose>1.5 -0.82 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.33</radius><length>0.24</length></cylinder></geometry>
+          <material><ambient>0.04 0.04 0.04 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse><specular>0.05 0.05 0.05 1</specular></material>
+        </visual>
+        <visual name="hub_front_right">
+          <pose>1.5 -0.82 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.19</radius><length>0.26</length></cylinder></geometry>
+          <material><ambient>0.6 0.6 0.62 1</ambient><diffuse>0.75 0.75 0.78 1</diffuse><specular>1 1 1 1</specular></material>
+        </visual>
+        <visual name="wheel_rear_left">
+          <pose>-1.3 0.82 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.33</radius><length>0.24</length></cylinder></geometry>
+          <material><ambient>0.04 0.04 0.04 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse><specular>0.05 0.05 0.05 1</specular></material>
+        </visual>
+        <visual name="hub_rear_left">
+          <pose>-1.3 0.82 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.19</radius><length>0.26</length></cylinder></geometry>
+          <material><ambient>0.6 0.6 0.62 1</ambient><diffuse>0.75 0.75 0.78 1</diffuse><specular>1 1 1 1</specular></material>
+        </visual>
+        <visual name="wheel_rear_right">
+          <pose>-1.3 -0.82 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.33</radius><length>0.24</length></cylinder></geometry>
+          <material><ambient>0.04 0.04 0.04 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse><specular>0.05 0.05 0.05 1</specular></material>
+        </visual>
+        <visual name="hub_rear_right">
+          <pose>-1.3 -0.82 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.19</radius><length>0.26</length></cylinder></geometry>
+          <material><ambient>0.6 0.6 0.62 1</ambient><diffuse>0.75 0.75 0.78 1</diffuse><specular>1 1 1 1</specular></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="parked_car_2">
+      <static>true</static>
+      <pose>0 -6.8 0 0 0 0</pose>
+      <link name="link">
+        <visual name="body">
+          <pose>0.1 0 0.62 0 0 0</pose>
+          <geometry><box><size>4.2 1.62 0.55</size></box></geometry>
+          <material><ambient>0.04 0.08 0.2 1</ambient><diffuse>0.06 0.12 0.3 1</diffuse><specular>0.8 0.8 0.8 1</specular></material>
+        </visual>
+        <visual name="cabin">
+          <pose>-0.25 0 1.1 0 0 0</pose>
+          <geometry><box><size>2.1 1.45 0.45</size></box></geometry>
+          <material><ambient>0.04 0.08 0.2 1</ambient><diffuse>0.06 0.12 0.3 1</diffuse><specular>0.8 0.8 0.8 1</specular></material>
+        </visual>
+        <visual name="glass_left">
+          <pose>-0.25 0.727 1.1 0 0 0</pose>
+          <geometry><box><size>1.9 0.01 0.35</size></box></geometry>
+          <material><ambient>0.25 0.45 0.55 0.35</ambient><diffuse>0.35 0.6 0.7 0.35</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+          <transparency>0.55</transparency>
+        </visual>
+        <visual name="glass_right">
+          <pose>-0.25 -0.727 1.1 0 0 0</pose>
+          <geometry><box><size>1.9 0.01 0.35</size></box></geometry>
+          <material><ambient>0.25 0.45 0.55 0.35</ambient><diffuse>0.35 0.6 0.7 0.35</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+          <transparency>0.55</transparency>
+        </visual>
+        <visual name="windshield">
+          <pose>0.81 0 1.1 0 -0.6 0</pose>
+          <geometry><box><size>0.02 1.35 0.5</size></box></geometry>
+          <material><ambient>0.25 0.45 0.55 0.35</ambient><diffuse>0.35 0.6 0.7 0.35</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+          <transparency>0.55</transparency>
+        </visual>
+        <visual name="rear_window">
+          <pose>-1.31 0 1.1 0 0.6 0</pose>
+          <geometry><box><size>0.02 1.35 0.45</size></box></geometry>
+          <material><ambient>0.25 0.45 0.55 0.35</ambient><diffuse>0.35 0.6 0.7 0.35</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+          <transparency>0.55</transparency>
+        </visual>
+        <visual name="bumper_front">
+          <pose>2.2 0 0.42 0 0 0</pose>
+          <geometry><box><size>0.12 1.62 0.2</size></box></geometry>
+          <material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.06 0.06 0.06 1</diffuse><specular>0.2 0.2 0.2 1</specular></material>
+        </visual>
+        <visual name="bumper_rear">
+          <pose>-2.0 0 0.42 0 0 0</pose>
+          <geometry><box><size>0.12 1.62 0.2</size></box></geometry>
+          <material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.06 0.06 0.06 1</diffuse><specular>0.2 0.2 0.2 1</specular></material>
+        </visual>
+        <visual name="headlight_left">
+          <pose>2.205 0.55 0.68 0 0 0</pose>
+          <geometry><box><size>0.02 0.3 0.1</size></box></geometry>
+          <material><ambient>0.9 0.9 0.8 1</ambient><diffuse>1 1 0.9 1</diffuse><emissive>0.9 0.9 0.75 1</emissive></material>
+        </visual>
+        <visual name="headlight_right">
+          <pose>2.205 -0.55 0.68 0 0 0</pose>
+          <geometry><box><size>0.02 0.3 0.1</size></box></geometry>
+          <material><ambient>0.9 0.9 0.8 1</ambient><diffuse>1 1 0.9 1</diffuse><emissive>0.9 0.9 0.75 1</emissive></material>
+        </visual>
+        <visual name="wheel_front_left">
+          <pose>1.5 0.82 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.33</radius><length>0.24</length></cylinder></geometry>
+          <material><ambient>0.04 0.04 0.04 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse><specular>0.05 0.05 0.05 1</specular></material>
+        </visual>
+        <visual name="hub_front_left">
+          <pose>1.5 0.82 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.19</radius><length>0.26</length></cylinder></geometry>
+          <material><ambient>0.6 0.6 0.62 1</ambient><diffuse>0.75 0.75 0.78 1</diffuse><specular>1 1 1 1</specular></material>
+        </visual>
+        <visual name="wheel_front_right">
+          <pose>1.5 -0.82 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.33</radius><length>0.24</length></cylinder></geometry>
+          <material><ambient>0.04 0.04 0.04 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse><specular>0.05 0.05 0.05 1</specular></material>
+        </visual>
+        <visual name="hub_front_right">
+          <pose>1.5 -0.82 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.19</radius><length>0.26</length></cylinder></geometry>
+          <material><ambient>0.6 0.6 0.62 1</ambient><diffuse>0.75 0.75 0.78 1</diffuse><specular>1 1 1 1</specular></material>
+        </visual>
+        <visual name="wheel_rear_left">
+          <pose>-1.3 0.82 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.33</radius><length>0.24</length></cylinder></geometry>
+          <material><ambient>0.04 0.04 0.04 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse><specular>0.05 0.05 0.05 1</specular></material>
+        </visual>
+        <visual name="hub_rear_left">
+          <pose>-1.3 0.82 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.19</radius><length>0.26</length></cylinder></geometry>
+          <material><ambient>0.6 0.6 0.62 1</ambient><diffuse>0.75 0.75 0.78 1</diffuse><specular>1 1 1 1</specular></material>
+        </visual>
+        <visual name="wheel_rear_right">
+          <pose>-1.3 -0.82 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.33</radius><length>0.24</length></cylinder></geometry>
+          <material><ambient>0.04 0.04 0.04 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse><specular>0.05 0.05 0.05 1</specular></material>
+        </visual>
+        <visual name="hub_rear_right">
+          <pose>-1.3 -0.82 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.19</radius><length>0.26</length></cylinder></geometry>
+          <material><ambient>0.6 0.6 0.62 1</ambient><diffuse>0.75 0.75 0.78 1</diffuse><specular>1 1 1 1</specular></material>
         </visual>
       </link>
     </model>
 
     <!--
-      Cabin frame: x forward, y left, z up, origin on the ground at the cabin
-      centre. Floor top at z = 0.375 (0.35 m ground clearance), roof bottom at
-      z = 1.425. Rear-left window opening: x -0.95..-0.05, z 0.875..1.275.
+      Our car. Frame: x forward, y left, z up, origin on the ground at the
+      cabin centre. Interior floor top z 0.375. No roof (convertible).
     -->
     <model name="cabin">
       <joint name="cabin_to_world" type="fixed">
@@ -109,76 +435,310 @@
         <visual name="floor_visual">
           <pose>0 0 0.35 0 0 0</pose>
           <geometry><box><size>2.0 1.5 0.05</size></box></geometry>
-          <material><ambient>0.2 0.2 0.2 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
+          <material><ambient>0.12 0.12 0.13 1</ambient><diffuse>0.18 0.18 0.2 1</diffuse><specular>0.3 0.3 0.3 1</specular></material>
         </visual>
-
-        <collision name="roof_collision">
-          <pose>0 0 1.45 0 0 0</pose>
-          <geometry><box><size>2.0 1.5 0.05</size></box></geometry>
-        </collision>
-        <!-- no roof visual: the GUI camera looks into the cabin from above -->
-
-        <collision name="front_wall_collision">
-          <pose>1.0 0 0.9 0 0 0</pose>
-          <geometry><box><size>0.05 1.5 1.05</size></box></geometry>
-        </collision>
-        <visual name="front_wall_visual">
-          <pose>1.0 0 0.9 0 0 0</pose>
-          <geometry><box><size>0.05 1.5 1.05</size></box></geometry>
-          <material><ambient>0.1 0.3 0.6 1</ambient><diffuse>0.1 0.3 0.6 1</diffuse></material>
+        <visual name="sill_left_visual">
+          <pose>0.05 0.775 0.29 0 0 0</pose>
+          <geometry><box><size>4.1 0.05 0.17</size></box></geometry>
+          <material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.06 0.06 0.06 1</diffuse><specular>0.2 0.2 0.2 1</specular></material>
         </visual>
-
+        <visual name="sill_right_visual">
+          <pose>0.05 -0.775 0.29 0 0 0</pose>
+          <geometry><box><size>4.1 0.05 0.17</size></box></geometry>
+          <material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.06 0.06 0.06 1</diffuse><specular>0.2 0.2 0.2 1</specular></material>
+        </visual>
+        <collision name="door_front_left_collision">
+          <pose>0.5 0.75 0.625 0 0 0</pose>
+          <geometry><box><size>1.0 0.05 0.5</size></box></geometry>
+        </collision>
+        <visual name="door_front_left_visual">
+          <pose>0.5 0.75 0.625 0 0 0</pose>
+          <geometry><box><size>1.0 0.05 0.5</size></box></geometry>
+          <material><ambient>0.55 0.04 0.06 1</ambient><diffuse>0.75 0.06 0.08 1</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+        </visual>
+        <collision name="door_rear_left_collision">
+          <pose>-0.5 0.75 0.625 0 0 0</pose>
+          <geometry><box><size>1.0 0.05 0.5</size></box></geometry>
+        </collision>
+        <visual name="door_rear_left_visual">
+          <pose>-0.5 0.75 0.625 0 0 0</pose>
+          <geometry><box><size>1.0 0.05 0.5</size></box></geometry>
+          <material><ambient>0.55 0.04 0.06 1</ambient><diffuse>0.75 0.06 0.08 1</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+        </visual>
+        <collision name="door_front_right_collision">
+          <pose>0.5 -0.75 0.625 0 0 0</pose>
+          <geometry><box><size>1.0 0.05 0.5</size></box></geometry>
+        </collision>
+        <visual name="door_front_right_visual">
+          <pose>0.5 -0.75 0.625 0 0 0</pose>
+          <geometry><box><size>1.0 0.05 0.5</size></box></geometry>
+          <material><ambient>0.55 0.04 0.06 1</ambient><diffuse>0.75 0.06 0.08 1</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+        </visual>
+        <collision name="door_rear_right_collision">
+          <pose>-0.5 -0.75 0.625 0 0 0</pose>
+          <geometry><box><size>1.0 0.05 0.5</size></box></geometry>
+        </collision>
+        <visual name="door_rear_right_visual">
+          <pose>-0.5 -0.75 0.625 0 0 0</pose>
+          <geometry><box><size>1.0 0.05 0.5</size></box></geometry>
+          <material><ambient>0.55 0.04 0.06 1</ambient><diffuse>0.75 0.06 0.08 1</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+        </visual>
+        <visual name="door_seam_left_visual">
+          <pose>0.0 0.778 0.625 0 0 0</pose>
+          <geometry><box><size>0.01 0.01 0.5</size></box></geometry>
+          <material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.06 0.06 0.06 1</diffuse><specular>0.2 0.2 0.2 1</specular></material>
+        </visual>
+        <visual name="door_seam_right_visual">
+          <pose>0.0 -0.778 0.625 0 0 0</pose>
+          <geometry><box><size>0.01 0.01 0.5</size></box></geometry>
+          <material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.06 0.06 0.06 1</diffuse><specular>0.2 0.2 0.2 1</specular></material>
+        </visual>
+        <visual name="handle_front_left_visual">
+          <pose>0.25 0.779 0.8 0 0 0</pose>
+          <geometry><box><size>0.14 0.012 0.03</size></box></geometry>
+          <material><ambient>0.6 0.6 0.62 1</ambient><diffuse>0.75 0.75 0.78 1</diffuse><specular>1 1 1 1</specular></material>
+        </visual>
+        <visual name="handle_rear_left_visual">
+          <pose>-0.75 0.779 0.8 0 0 0</pose>
+          <geometry><box><size>0.14 0.012 0.03</size></box></geometry>
+          <material><ambient>0.6 0.6 0.62 1</ambient><diffuse>0.75 0.75 0.78 1</diffuse><specular>1 1 1 1</specular></material>
+        </visual>
+        <visual name="handle_front_right_visual">
+          <pose>0.25 -0.779 0.8 0 0 0</pose>
+          <geometry><box><size>0.14 0.012 0.03</size></box></geometry>
+          <material><ambient>0.6 0.6 0.62 1</ambient><diffuse>0.75 0.75 0.78 1</diffuse><specular>1 1 1 1</specular></material>
+        </visual>
+        <visual name="handle_rear_right_visual">
+          <pose>-0.75 -0.779 0.8 0 0 0</pose>
+          <geometry><box><size>0.14 0.012 0.03</size></box></geometry>
+          <material><ambient>0.6 0.6 0.62 1</ambient><diffuse>0.75 0.75 0.78 1</diffuse><specular>1 1 1 1</specular></material>
+        </visual>
+        <visual name="belt_trim_left_visual">
+          <pose>0.0 0.75 0.88 0 0 0</pose>
+          <geometry><box><size>2.0 0.07 0.02</size></box></geometry>
+          <material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.06 0.06 0.06 1</diffuse><specular>0.2 0.2 0.2 1</specular></material>
+        </visual>
+        <visual name="belt_trim_right_visual">
+          <pose>0.0 -0.75 0.88 0 0 0</pose>
+          <geometry><box><size>2.0 0.07 0.02</size></box></geometry>
+          <material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.06 0.06 0.06 1</diffuse><specular>0.2 0.2 0.2 1</specular></material>
+        </visual>
+        <visual name="glass_front_left_visual">
+          <pose>0.5 0.75 1.06 0 0 0</pose>
+          <geometry><box><size>0.85 0.01 0.36</size></box></geometry>
+          <material><ambient>0.25 0.45 0.55 0.35</ambient><diffuse>0.35 0.6 0.7 0.35</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+          <transparency>0.55</transparency>
+        </visual>
+        <visual name="glass_front_right_visual">
+          <pose>0.5 -0.75 1.06 0 0 0</pose>
+          <geometry><box><size>0.85 0.01 0.36</size></box></geometry>
+          <material><ambient>0.25 0.45 0.55 0.35</ambient><diffuse>0.35 0.6 0.7 0.35</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+          <transparency>0.55</transparency>
+        </visual>
+        <visual name="glass_rear_right_visual">
+          <pose>-0.5 -0.75 1.075 0 0 0</pose>
+          <geometry><box><size>0.9 0.01 0.4</size></box></geometry>
+          <material><ambient>0.25 0.45 0.55 0.35</ambient><diffuse>0.35 0.6 0.7 0.35</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+          <transparency>0.55</transparency>
+        </visual>
+        <visual name="hood_visual">
+          <pose>1.575 0 0.62 0 0 0</pose>
+          <geometry><box><size>1.15 1.55 0.5</size></box></geometry>
+          <material><ambient>0.55 0.04 0.06 1</ambient><diffuse>0.75 0.06 0.08 1</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+        </visual>
+        <visual name="hood_bulge_visual">
+          <pose>1.5 0 0.875 0 0.04 0</pose>
+          <geometry><box><size>0.95 1.2 0.03</size></box></geometry>
+          <material><ambient>0.55 0.04 0.06 1</ambient><diffuse>0.75 0.06 0.08 1</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+        </visual>
+        <collision name="firewall_collision">
+          <pose>0.975 0 0.6 0 0 0</pose>
+          <geometry><box><size>0.05 1.5 0.5</size></box></geometry>
+        </collision>
+        <visual name="firewall_visual">
+          <pose>0.975 0 0.6 0 0 0</pose>
+          <geometry><box><size>0.05 1.5 0.5</size></box></geometry>
+          <material><ambient>0.08 0.08 0.09 1</ambient><diffuse>0.14 0.14 0.15 1</diffuse><specular>0.2 0.2 0.2 1</specular></material>
+        </visual>
+        <visual name="dashboard_visual">
+          <pose>0.85 0 0.92 0 0 0</pose>
+          <geometry><box><size>0.3 1.45 0.14</size></box></geometry>
+          <material><ambient>0.08 0.08 0.09 1</ambient><diffuse>0.14 0.14 0.15 1</diffuse><specular>0.2 0.2 0.2 1</specular></material>
+        </visual>
+        <visual name="windshield_visual">
+          <pose>1.12 0 1.12 0 -0.5 0</pose>
+          <geometry><box><size>0.02 1.42 0.6</size></box></geometry>
+          <material><ambient>0.25 0.45 0.55 0.35</ambient><diffuse>0.35 0.6 0.7 0.35</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+          <transparency>0.55</transparency>
+        </visual>
+        <visual name="a_pillar_left_visual">
+          <pose>1.12 0.72 1.12 0 -0.5 0</pose>
+          <geometry><box><size>0.05 0.05 0.62</size></box></geometry>
+          <material><ambient>0.55 0.04 0.06 1</ambient><diffuse>0.75 0.06 0.08 1</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+        </visual>
+        <visual name="a_pillar_right_visual">
+          <pose>1.12 -0.72 1.12 0 -0.5 0</pose>
+          <geometry><box><size>0.05 0.05 0.62</size></box></geometry>
+          <material><ambient>0.55 0.04 0.06 1</ambient><diffuse>0.75 0.06 0.08 1</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+        </visual>
+        <visual name="windshield_header_visual">
+          <pose>0.99 0 1.385 0 0 0</pose>
+          <geometry><box><size>0.06 1.47 0.05</size></box></geometry>
+          <material><ambient>0.55 0.04 0.06 1</ambient><diffuse>0.75 0.06 0.08 1</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+        </visual>
+        <visual name="mirror_left_visual">
+          <pose>0.95 0.86 0.98 0 0 0</pose>
+          <geometry><box><size>0.08 0.18 0.11</size></box></geometry>
+          <material><ambient>0.55 0.04 0.06 1</ambient><diffuse>0.75 0.06 0.08 1</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+        </visual>
+        <visual name="mirror_right_visual">
+          <pose>0.95 -0.86 0.98 0 0 0</pose>
+          <geometry><box><size>0.08 0.18 0.11</size></box></geometry>
+          <material><ambient>0.55 0.04 0.06 1</ambient><diffuse>0.75 0.06 0.08 1</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+        </visual>
+        <visual name="bumper_front_visual">
+          <pose>2.18 0 0.42 0 0 0</pose>
+          <geometry><box><size>0.12 1.6 0.2</size></box></geometry>
+          <material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.06 0.06 0.06 1</diffuse><specular>0.2 0.2 0.2 1</specular></material>
+        </visual>
+        <visual name="grille_visual">
+          <pose>2.155 0 0.62 0 0 0</pose>
+          <geometry><box><size>0.02 0.7 0.18</size></box></geometry>
+          <material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.06 0.06 0.06 1</diffuse><specular>0.2 0.2 0.2 1</specular></material>
+        </visual>
+        <visual name="headlight_left_visual">
+          <pose>2.155 0.55 0.66 0 0 0</pose>
+          <geometry><box><size>0.03 0.32 0.12</size></box></geometry>
+          <material><ambient>0.9 0.9 0.8 1</ambient><diffuse>1 1 0.9 1</diffuse><emissive>0.9 0.9 0.75 1</emissive></material>
+        </visual>
+        <visual name="headlight_right_visual">
+          <pose>2.155 -0.55 0.66 0 0 0</pose>
+          <geometry><box><size>0.03 0.32 0.12</size></box></geometry>
+          <material><ambient>0.9 0.9 0.8 1</ambient><diffuse>1 1 0.9 1</diffuse><emissive>0.9 0.9 0.75 1</emissive></material>
+        </visual>
+        <visual name="plate_front_visual">
+          <pose>2.245 0 0.42 0 0 0</pose>
+          <geometry><box><size>0.01 0.52 0.12</size></box></geometry>
+          <material><ambient>0.85 0.85 0.85 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse><specular>0.3 0.3 0.3 1</specular></material>
+        </visual>
+        <visual name="trunk_visual">
+          <pose>-1.475 0 0.635 0 0 0</pose>
+          <geometry><box><size>0.95 1.55 0.53</size></box></geometry>
+          <material><ambient>0.55 0.04 0.06 1</ambient><diffuse>0.75 0.06 0.08 1</diffuse><specular>0.9 0.9 0.9 1</specular></material>
+        </visual>
         <collision name="rear_wall_collision">
-          <pose>-1.0 0 0.9 0 0 0</pose>
-          <geometry><box><size>0.05 1.5 1.05</size></box></geometry>
+          <pose>-1.0 0 0.64 0 0 0</pose>
+          <geometry><box><size>0.05 1.5 0.53</size></box></geometry>
         </collision>
         <visual name="rear_wall_visual">
-          <pose>-1.0 0 0.9 0 0 0</pose>
-          <geometry><box><size>0.05 1.5 1.05</size></box></geometry>
-          <material><ambient>0.1 0.3 0.6 1</ambient><diffuse>0.1 0.3 0.6 1</diffuse></material>
+          <pose>-1.0 0 0.64 0 0 0</pose>
+          <geometry><box><size>0.05 1.5 0.53</size></box></geometry>
+          <material><ambient>0.55 0.04 0.06 1</ambient><diffuse>0.75 0.06 0.08 1</diffuse><specular>0.9 0.9 0.9 1</specular></material>
         </visual>
-
-        <collision name="right_wall_collision">
-          <pose>0 -0.75 0.9 0 0 0</pose>
-          <geometry><box><size>2.0 0.05 1.05</size></box></geometry>
-        </collision>
-        <visual name="right_wall_visual">
-          <pose>0 -0.75 0.9 0 0 0</pose>
-          <geometry><box><size>2.0 0.05 1.05</size></box></geometry>
-          <material><ambient>0.1 0.3 0.6 1</ambient><diffuse>0.1 0.3 0.6 1</diffuse></material>
+        <visual name="trunk_lid_seam_visual">
+          <pose>-1.0 0 0.903 0 0 0</pose>
+          <geometry><box><size>0.02 1.5 0.01</size></box></geometry>
+          <material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.06 0.06 0.06 1</diffuse><specular>0.2 0.2 0.2 1</specular></material>
         </visual>
-
-        <!-- left side, front half: closed panel -->
-        <collision name="left_front_wall_collision">
-          <pose>0.5 0.75 0.9 0 0 0</pose>
-          <geometry><box><size>1.0 0.05 1.05</size></box></geometry>
-        </collision>
-        <visual name="left_front_wall_visual">
-          <pose>0.5 0.75 0.9 0 0 0</pose>
-          <geometry><box><size>1.0 0.05 1.05</size></box></geometry>
-          <material><ambient>0.1 0.3 0.6 1</ambient><diffuse>0.1 0.3 0.6 1</diffuse></material>
+        <visual name="taillight_left_visual">
+          <pose>-1.955 0.6 0.76 0 0 0</pose>
+          <geometry><box><size>0.03 0.3 0.1</size></box></geometry>
+          <material><ambient>0.6 0.02 0.02 1</ambient><diffuse>0.8 0.03 0.03 1</diffuse><emissive>0.7 0.02 0.02 1</emissive></material>
         </visual>
-
-        <!-- left side, rear half: door panel below the opening (glass slides into it) -->
-        <collision name="left_rear_door_collision">
-          <pose>-0.5 0.75 0.625 0 0 0</pose>
-          <geometry><box><size>1.0 0.05 0.5</size></box></geometry>
-        </collision>
-        <visual name="left_rear_door_visual">
-          <pose>-0.5 0.75 0.625 0 0 0</pose>
-          <geometry><box><size>1.0 0.05 0.5</size></box></geometry>
-          <material><ambient>0.1 0.3 0.6 1</ambient><diffuse>0.1 0.3 0.6 1</diffuse></material>
+        <visual name="taillight_right_visual">
+          <pose>-1.955 -0.6 0.76 0 0 0</pose>
+          <geometry><box><size>0.03 0.3 0.1</size></box></geometry>
+          <material><ambient>0.6 0.02 0.02 1</ambient><diffuse>0.8 0.03 0.03 1</diffuse><emissive>0.7 0.02 0.02 1</emissive></material>
         </visual>
-
-        <!-- left side, rear half: rail above the opening -->
-        <collision name="left_rear_rail_collision">
-          <pose>-0.5 0.75 1.35 0 0 0</pose>
-          <geometry><box><size>1.0 0.05 0.15</size></box></geometry>
-        </collision>
-        <visual name="left_rear_rail_visual">
-          <pose>-0.5 0.75 1.35 0 0 0</pose>
-          <geometry><box><size>1.0 0.05 0.15</size></box></geometry>
-          <material><ambient>0.1 0.3 0.6 1</ambient><diffuse>0.1 0.3 0.6 1</diffuse></material>
+        <visual name="bumper_rear_visual">
+          <pose>-1.99 0 0.42 0 0 0</pose>
+          <geometry><box><size>0.12 1.6 0.2</size></box></geometry>
+          <material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.06 0.06 0.06 1</diffuse><specular>0.2 0.2 0.2 1</specular></material>
+        </visual>
+        <visual name="plate_rear_visual">
+          <pose>-2.055 0 0.52 0 0 0</pose>
+          <geometry><box><size>0.01 0.52 0.12</size></box></geometry>
+          <material><ambient>0.85 0.85 0.85 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse><specular>0.3 0.3 0.3 1</specular></material>
+        </visual>
+        <visual name="front_seat_left_base_visual">
+          <pose>0.45 0.38 0.5 0 0 0</pose>
+          <geometry><box><size>0.5 0.5 0.15</size></box></geometry>
+          <material><ambient>0.18 0.14 0.12 1</ambient><diffuse>0.32 0.25 0.2 1</diffuse><specular>0.1 0.1 0.1 1</specular></material>
+        </visual>
+        <visual name="front_seat_left_back_visual">
+          <pose>0.2 0.38 0.86 0 -0.15 0</pose>
+          <geometry><box><size>0.1 0.5 0.6</size></box></geometry>
+          <material><ambient>0.18 0.14 0.12 1</ambient><diffuse>0.32 0.25 0.2 1</diffuse><specular>0.1 0.1 0.1 1</specular></material>
+        </visual>
+        <visual name="front_seat_left_head_visual">
+          <pose>0.15 0.38 1.24 0 -0.15 0</pose>
+          <geometry><box><size>0.08 0.26 0.16</size></box></geometry>
+          <material><ambient>0.18 0.14 0.12 1</ambient><diffuse>0.32 0.25 0.2 1</diffuse><specular>0.1 0.1 0.1 1</specular></material>
+        </visual>
+        <visual name="front_seat_right_base_visual">
+          <pose>0.45 -0.38 0.5 0 0 0</pose>
+          <geometry><box><size>0.5 0.5 0.15</size></box></geometry>
+          <material><ambient>0.18 0.14 0.12 1</ambient><diffuse>0.32 0.25 0.2 1</diffuse><specular>0.1 0.1 0.1 1</specular></material>
+        </visual>
+        <visual name="front_seat_right_back_visual">
+          <pose>0.2 -0.38 0.86 0 -0.15 0</pose>
+          <geometry><box><size>0.1 0.5 0.6</size></box></geometry>
+          <material><ambient>0.18 0.14 0.12 1</ambient><diffuse>0.32 0.25 0.2 1</diffuse><specular>0.1 0.1 0.1 1</specular></material>
+        </visual>
+        <visual name="front_seat_right_head_visual">
+          <pose>0.15 -0.38 1.24 0 -0.15 0</pose>
+          <geometry><box><size>0.08 0.26 0.16</size></box></geometry>
+          <material><ambient>0.18 0.14 0.12 1</ambient><diffuse>0.32 0.25 0.2 1</diffuse><specular>0.1 0.1 0.1 1</specular></material>
+        </visual>
+        <visual name="steering_column_visual">
+          <pose>0.83 0.38 0.92 0 -1.1 0</pose>
+          <geometry><cylinder><radius>0.025</radius><length>0.2</length></cylinder></geometry>
+          <material><ambient>0.08 0.08 0.09 1</ambient><diffuse>0.14 0.14 0.15 1</diffuse><specular>0.2 0.2 0.2 1</specular></material>
+        </visual>
+        <visual name="steering_wheel_visual">
+          <pose>0.74 0.38 0.97 0 -1.1 0</pose>
+          <geometry><cylinder><radius>0.18</radius><length>0.035</length></cylinder></geometry>
+          <material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.06 0.06 0.06 1</diffuse><specular>0.2 0.2 0.2 1</specular></material>
+        </visual>
+        <visual name="wheel_front_left">
+          <pose>1.55 0.8 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.33</radius><length>0.24</length></cylinder></geometry>
+          <material><ambient>0.04 0.04 0.04 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse><specular>0.05 0.05 0.05 1</specular></material>
+        </visual>
+        <visual name="hub_front_left">
+          <pose>1.55 0.8 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.19</radius><length>0.26</length></cylinder></geometry>
+          <material><ambient>0.6 0.6 0.62 1</ambient><diffuse>0.75 0.75 0.78 1</diffuse><specular>1 1 1 1</specular></material>
+        </visual>
+        <visual name="wheel_front_right">
+          <pose>1.55 -0.8 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.33</radius><length>0.24</length></cylinder></geometry>
+          <material><ambient>0.04 0.04 0.04 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse><specular>0.05 0.05 0.05 1</specular></material>
+        </visual>
+        <visual name="hub_front_right">
+          <pose>1.55 -0.8 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.19</radius><length>0.26</length></cylinder></geometry>
+          <material><ambient>0.6 0.6 0.62 1</ambient><diffuse>0.75 0.75 0.78 1</diffuse><specular>1 1 1 1</specular></material>
+        </visual>
+        <visual name="wheel_rear_left">
+          <pose>-1.3 0.8 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.33</radius><length>0.24</length></cylinder></geometry>
+          <material><ambient>0.04 0.04 0.04 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse><specular>0.05 0.05 0.05 1</specular></material>
+        </visual>
+        <visual name="hub_rear_left">
+          <pose>-1.3 0.8 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.19</radius><length>0.26</length></cylinder></geometry>
+          <material><ambient>0.6 0.6 0.62 1</ambient><diffuse>0.75 0.75 0.78 1</diffuse><specular>1 1 1 1</specular></material>
+        </visual>
+        <visual name="wheel_rear_right">
+          <pose>-1.3 -0.8 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.33</radius><length>0.24</length></cylinder></geometry>
+          <material><ambient>0.04 0.04 0.04 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse><specular>0.05 0.05 0.05 1</specular></material>
+        </visual>
+        <visual name="hub_rear_right">
+          <pose>-1.3 -0.8 0.33 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.19</radius><length>0.26</length></cylinder></geometry>
+          <material><ambient>0.6 0.6 0.62 1</ambient><diffuse>0.75 0.75 0.78 1</diffuse><specular>1 1 1 1</specular></material>
         </visual>
       </link>
 
@@ -262,11 +822,11 @@
         <visual name="glass_visual">
           <geometry><box><size>0.9 0.01 0.4</size></box></geometry>
           <material>
-            <ambient>0.3 0.85 1.0 1</ambient>
-            <diffuse>0.3 0.85 1.0 1</diffuse>
-            <emissive>0.05 0.25 0.35 1</emissive>
+            <ambient>0.25 0.45 0.55 0.35</ambient>
+            <diffuse>0.35 0.6 0.7 0.35</diffuse>
+            <specular>0.9 0.9 0.9 1</specular>
           </material>
-          <transparency>0.25</transparency>
+          <transparency>0.35</transparency>
         </visual>
       </link>
 
