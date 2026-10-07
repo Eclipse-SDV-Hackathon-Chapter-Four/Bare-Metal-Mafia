@@ -177,6 +177,7 @@ Optional profiles:
 docker compose --profile ros2 up --build      # adds ROS 2 HVAC via Eclipse Muto
 docker compose --profile threadx up --build   # adds the ThreadX sensor over SOME/IP
 docker compose --profile gazebo up --build    # adds the Gazebo cabin simulation (see gazebo-sim/README.md)
+COMPOSE_CMD="docker compose" HVAC=1 ./ros-up-bridge/demo-guardian.sh   # Guardian Loop with Gazebo + HVAC, live status lines
 ```
 
 The full walkthrough is in [docs/Tutorial.md](docs/Tutorial.md).

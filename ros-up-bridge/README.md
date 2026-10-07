@@ -154,6 +154,44 @@ setpoint every second (`repeat_last_ms: 1000`), so a lost message is
 corrected within a second; a mapper started after the last window change
 still waits for the next one.
 
+## Guardian Loop demo (where to see temperature and HVAC)
+
+```bash
+COMPOSE_CMD="docker compose" ./ros-up-bridge/demo-guardian.sh                 # without HVAC
+COMPOSE_CMD="docker compose" HVAC=1 ./ros-up-bridge/demo-guardian.sh          # with the ROS 2 HVAC (Muto)
+xhost +local: && COMPOSE_CMD="docker compose" GUI=1 HVAC=1 ./ros-up-bridge/demo-guardian.sh   # plus Gazebo GUI
+```
+
+The script starts the stack in replace mode, puts the child seat into the
+car, lets `temperature-sim` heat the cabin (26 → 36 → 43 °C) and prints one
+line every 2 s with Guardian state, child, cabin temperature, window (from
+the Gazebo joint) and HVAC, then takes the child out. The stack keeps
+running afterwards.
+
+| What | Where |
+|---|---|
+| Guardian state, child, cabin temperature, window, HVAC | dashboard <http://localhost:8094> (also `GET /api/state`) |
+| HVAC setpoint, fan, AC, fault injection (`HVAC=1`) | HVAC console <http://localhost:18081> |
+| ROS 2 diagnostics / faults (`HVAC=1`) | ros2_medkit <http://localhost:18080/api/v1/faults> |
+| Window glass and child seat | Gazebo GUI (`GUI=1`) |
+
+Temperature and HVAC are not drawn in Gazebo; they come from
+`temperature-sim` and the ROS 2 HVAC workload over uProtocol.
+
+What you see:
+
+- **without HVAC**: CRITICAL at 43 °C, the HVAC request is never
+  confirmed, after 12 s MITIGATING with window 25 % (the Gazebo glass moves)
+  and alarm; the open window slowly cools the cabin
+- **with HVAC**: at 43 °C the HVAC answers (AC on, 18 °C, fan 100 %), the
+  cabin cools to ~24 °C, the Guardian steps back to MONITORING, the window
+  stays closed
+- **HVAC fault**: inject a fault on the HVAC console before the cabin gets
+  hot; at 43 °C the Guardian opens the window immediately
+
+`compose.replace.yml` also adjusts the `depends_on` of `ros2-hvac` (and
+`ros2-hvac-host-can`), so replace mode works together with `--profile ros2`.
+
 ## Mapping format
 
 One YAML file per mode, read by both sides. `${name.key}` inserts a value
@@ -399,3 +437,4 @@ bus) but may print the `WARN` line.
 | `compose.mirror.yml`, `compose.replace.yml` | compose overrides |
 | `check-single-publisher.sh` | static single-publisher check |
 | `test-mirror.sh`, `test-replace.sh` | end-to-end tests |
+| `demo-guardian.sh` | guided Guardian Loop demo (replace mode, optional HVAC and GUI) |
