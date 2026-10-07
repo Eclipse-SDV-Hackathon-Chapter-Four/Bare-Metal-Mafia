@@ -47,11 +47,14 @@ struct GuardianRuntime {
 #[derive(serde::Serialize)]
 struct EwsGuardianState {
     time: u64,
+
     temperature: f32,
     child_presence: bool,
-    hvac_active: bool,
-    windows_down: bool,
     state: GuardianState,
+
+    hvac_active: bool,
+    hvac_target: f32,
+    hvac_fault: bool,
 }
 
 #[derive(serde::Deserialize)]
@@ -417,11 +420,14 @@ async fn handle_ews_socket(mut socket: WebSocket, app: AppState, ews_warn: Arc<A
                     let guard = app.data.lock().await;
                     EwsGuardianState {
                         time: now_ms(),
+
                         temperature: guard.temperature_celsius,
                         child_presence: guard.child_present,
-                        hvac_active: guard.hvac_active,
-                        windows_down: guard.window_stage_requested,
                         state: guard.current_state,
+
+                        hvac_active: guard.hvac_active,
+                        hvac_fault: guard.hvac_fault_active,
+                        hvac_target: guard.hvac_target_temperature_celsius as f32,
                     }
                 };
 
@@ -459,6 +465,7 @@ async fn handle_ews_socket(mut socket: WebSocket, app: AppState, ews_warn: Arc<A
 }
 
 fn handle_ews_warning(warning: EwsWarn, ews_warn: Arc<AtomicBool>) {
+    info!("WARNING RECEIVED");
     match warning.reason {
         EwsReason::Heat => ews_warn.store(true, Ordering::Relaxed),
     }

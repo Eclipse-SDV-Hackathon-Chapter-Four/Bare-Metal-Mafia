@@ -97,10 +97,11 @@ struct EwsGuardianState {
 
     temperature: f32,
     child_presence: bool,
+    state: GuardianState,
 
     hvac_active: bool,
-    windows_down: bool,
-    state: GuardianState,
+    hvac_target: f32,
+    hvac_fault: bool,
 };
 
 enum GuardianState {
