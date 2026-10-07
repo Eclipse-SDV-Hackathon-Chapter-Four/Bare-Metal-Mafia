@@ -158,6 +158,7 @@ async fn run_bridge_loop(
             temperature_celsius: frame.die_temp_c,
             timestamp_ms: now,
             sensor_status: SensorStatus::Ok,
+            sensor_id: 2,
         };
         if let Err(e) =
             publish_json_event(transport.clone(), temperature_sink.clone(), &temperature_event).await

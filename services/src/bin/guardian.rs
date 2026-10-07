@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -16,7 +17,9 @@ use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 use up_rust::communication::{CallOptions, InMemoryRpcClient, RpcClient};
-use up_rust::{UListener, UMessage, UTransport, UPayloadFormat};
+use up_rust::{UListener, UMessage, UPayloadFormat, UTransport};
+
+const SENSOR_DISAGREEMENT_THRESHOLD_CELSIUS: f32 = 5.0;
 
 #[derive(Clone)]
 struct AppState {
@@ -27,6 +30,8 @@ struct AppState {
 struct GuardianRuntime {
     child_present: bool,
     temperature_celsius: f32,
+    sensor_temperatures: HashMap<u64, f32>,
+    broken_sensors: HashSet<u64>,
     current_state: GuardianState,
     hvac_active: bool,
     hvac_fault_active: bool,
@@ -141,6 +146,8 @@ impl GuardianRuntime {
         Self {
             child_present: false,
             temperature_celsius: 26.0,
+            sensor_temperatures: HashMap::new(),
+            broken_sensors: HashSet::new(),
             current_state: GuardianState::Clear,
             hvac_active: false,
             hvac_fault_active: false,
@@ -158,12 +165,53 @@ impl GuardianRuntime {
     }
 
     fn apply_temperature_event(&mut self, event: CabinTemperatureEvent) -> bool {
-        if matches!(event.sensor_status, SensorStatus::Ok | SensorStatus::Degraded) {
-            self.temperature_celsius = event.temperature_celsius;
+        if self.broken_sensors.contains(&event.sensor_id)
+            || !matches!(
+                event.sensor_status,
+                SensorStatus::Ok | SensorStatus::Degraded
+            )
+        {
+            return false;
+        }
+
+        let disagreeing_sensors: Vec<u64> = self
+            .sensor_temperatures
+            .iter()
+            .filter_map(|(&sensor_id, &temperature)| {
+                (sensor_id != event.sensor_id
+                    && (temperature - event.temperature_celsius).abs()
+                        > SENSOR_DISAGREEMENT_THRESHOLD_CELSIUS)
+                    .then_some(sensor_id)
+            })
+            .collect();
+
+        if !disagreeing_sensors.is_empty() {
+            self.broken_sensors.insert(event.sensor_id);
+            self.sensor_temperatures.remove(&event.sensor_id);
+            for sensor_id in disagreeing_sensors {
+                self.broken_sensors.insert(sensor_id);
+                self.sensor_temperatures.remove(&sensor_id);
+                warn!(
+                    "Temperature sensors {} and {} disagree by more than {:.1}C; marking both broken",
+                    event.sensor_id,
+                    sensor_id,
+                    SENSOR_DISAGREEMENT_THRESHOLD_CELSIUS
+                );
+            }
+            if self.sensor_temperatures.is_empty() {
+                return false;
+            }
+
+            self.temperature_celsius = self.sensor_temperatures.values().sum::<f32>()
+                / self.sensor_temperatures.len() as f32;
             return self.recompute_and_log();
         }
 
-        false
+        self.sensor_temperatures
+            .insert(event.sensor_id, event.temperature_celsius);
+        self.temperature_celsius =
+            self.sensor_temperatures.values().sum::<f32>() / self.sensor_temperatures.len() as f32;
+        self.recompute_and_log()
     }
 
     fn recompute_and_log(&mut self) -> bool {
@@ -441,4 +489,56 @@ fn now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temperature_event(sensor_id: u64, temperature_celsius: f32) -> CabinTemperatureEvent {
+        CabinTemperatureEvent {
+            temperature_celsius,
+            timestamp_ms: 0,
+            sensor_status: SensorStatus::Ok,
+            sensor_id,
+        }
+    }
+
+    #[test]
+    fn agreeing_sensors_are_averaged() {
+        let mut runtime = GuardianRuntime::new();
+        runtime.apply_temperature_event(temperature_event(1, 30.0));
+        runtime.apply_temperature_event(temperature_event(2, 32.0));
+
+        assert_eq!(runtime.temperature_celsius, 31.0);
+        assert!(runtime.broken_sensors.is_empty());
+    }
+
+    #[test]
+    fn divergent_sensors_are_both_marked_broken_and_ignored() {
+        let mut runtime = GuardianRuntime::new();
+        runtime.apply_temperature_event(temperature_event(1, 30.0));
+        runtime.apply_temperature_event(temperature_event(2, 36.0));
+
+        assert!(runtime.broken_sensors.contains(&1));
+        assert!(runtime.broken_sensors.contains(&2));
+        assert!(runtime.sensor_temperatures.is_empty());
+
+        runtime.apply_temperature_event(temperature_event(1, 31.0));
+        assert!(runtime.sensor_temperatures.is_empty());
+    }
+
+    #[test]
+    fn unaffected_sensor_remains_active_after_pairwise_disagreement() {
+        let mut runtime = GuardianRuntime::new();
+        runtime.apply_temperature_event(temperature_event(1, 30.0));
+        runtime.apply_temperature_event(temperature_event(2, 33.0));
+        runtime.apply_temperature_event(temperature_event(3, 36.0));
+
+        assert!(runtime.broken_sensors.contains(&1));
+        assert!(runtime.broken_sensors.contains(&3));
+        assert!(!runtime.broken_sensors.contains(&2));
+        assert_eq!(runtime.sensor_temperatures.get(&2), Some(&33.0));
+        assert_eq!(runtime.temperature_celsius, 33.0);
+    }
 }
