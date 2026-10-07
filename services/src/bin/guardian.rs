@@ -2,10 +2,12 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::get;
 use axum::{Json, Router};
+use futures_util::StreamExt;
 use guardian_sil::{
     decode_json_payload, evaluate_state, hvac_state_uri, make_uri_provider, mitigation_rpc_uri,
     open_up_transport, publish_json_event, vss_cabin_temperature_uri, vss_child_presence_uri,
@@ -17,6 +19,9 @@ use tokio::sync::Mutex;
 use tracing::{info, warn};
 use up_rust::communication::{CallOptions, InMemoryRpcClient, RpcClient};
 use up_rust::{UListener, UMessage, UTransport, UPayloadFormat};
+
+const EWS_PORT: u16 = 8765;
+const EWS_STATE_BROADCAST_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Clone)]
 struct AppState {
@@ -35,6 +40,29 @@ struct GuardianRuntime {
     hvac_stage_requested: bool,
     window_stage_requested: bool,
     mitigation_pending: bool,
+}
+
+#[derive(serde::Serialize)]
+struct EwsGuardianState {
+    time: u64,
+    temperature: f32,
+    child_presence: bool,
+    hvac_active: bool,
+    windows_down: bool,
+    state: GuardianState,
+}
+
+#[derive(serde::Deserialize)]
+#[allow(dead_code)]
+struct EwsWarn {
+    time: u64,
+    reason: EwsReason,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "PascalCase")]
+enum EwsReason {
+    Heat,
 }
 
 struct ChildPresenceListener {
@@ -280,6 +308,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = format!("{}:{}", host, port);
+    let ews_addr = format!("{}:{}", host, EWS_PORT);
 
     let uri_provider = make_uri_provider("guardian", 0x1001, 0x01);
     let transport = open_up_transport(uri_provider.clone()).await?;
@@ -335,14 +364,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = Router::new()
         .route("/health", get(health))
         .route("/state", get(get_state))
-        .with_state(app_state);
+        .with_state(app_state.clone());
 
     let listener = TcpListener::bind(&addr).await?;
     info!("Guardian listening on {}", addr);
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    let ews_app = Router::new()
+        .route("/ws", get(ews_websocket))
+        .with_state(app_state);
+    let ews_listener = TcpListener::bind(&ews_addr).await?;
+    info!("Guardian EWS WebSocket listening on ws://{}/ws", ews_addr);
+
+    tokio::try_join!(
+        axum::serve(listener, app).with_graceful_shutdown(shutdown_signal()),
+        axum::serve(ews_listener, ews_app).with_graceful_shutdown(shutdown_signal()),
+    )?;
 
     Ok(())
 }
@@ -355,6 +391,66 @@ async fn get_state(State(app): State<AppState>) -> Json<GuardianSnapshot> {
     let guard = app.data.lock().await;
     Json(guard.snapshot())
 }
+
+async fn ews_websocket(
+    State(app): State<AppState>,
+    websocket: WebSocketUpgrade,
+) -> axum::response::Response {
+    websocket.on_upgrade(move |socket| handle_ews_socket(socket, app))
+}
+
+async fn handle_ews_socket(mut socket: WebSocket, app: AppState) {
+    let mut broadcast_interval = tokio::time::interval(EWS_STATE_BROADCAST_INTERVAL);
+
+    loop {
+        tokio::select! {
+            _ = broadcast_interval.tick() => {
+                let state = {
+                    let guard = app.data.lock().await;
+                    EwsGuardianState {
+                        time: now_ms(),
+                        temperature: guard.temperature_celsius,
+                        child_presence: guard.child_present,
+                        hvac_active: guard.hvac_active,
+                        windows_down: guard.window_stage_requested,
+                        state: guard.current_state,
+                    }
+                };
+
+                let payload = match serde_json::to_string(&state) {
+                    Ok(payload) => payload,
+                    Err(err) => {
+                        warn!("EWS state serialization failed: {}", err);
+                        continue;
+                    }
+                };
+
+                if socket.send(Message::Text(payload)).await.is_err() {
+                    break;
+                }
+            }
+            message = socket.next() => {
+                match message {
+                    Some(Ok(Message::Text(payload))) => {
+                        match serde_json::from_str::<EwsWarn>(&payload) {
+                            Ok(warning) => handle_ews_warning(warning),
+                            Err(err) => warn!("Invalid EWS warning payload: {}", err),
+                        }
+                    }
+                    Some(Ok(Message::Ping(payload))) => {
+                        if socket.send(Message::Pong(payload)).await.is_err() {
+                            break;
+                        }
+                    }
+                    Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
+                    Some(Ok(Message::Binary(_))) | Some(Ok(Message::Pong(_))) => {}
+                }
+            }
+        }
+    }
+}
+
+fn handle_ews_warning(_warning: EwsWarn) {}
 
 async fn request_mitigation(app: &AppState, rpc_client: Arc<InMemoryRpcClient>) {
     let request = {

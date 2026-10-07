@@ -29,6 +29,7 @@ services:
       ZENOH_CONNECT: tcp/zenohd:7447
     ports:
       - "8080:8080"
+      - "8765:8765"
     depends_on:
       - actuation-adapter
       - zenohd

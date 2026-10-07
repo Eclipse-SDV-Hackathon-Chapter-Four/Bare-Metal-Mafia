@@ -92,7 +92,7 @@ No service knows where any other service runs, and that is what makes the swap p
 Request Guardian State:
 
 ```Rust
-struct GuardianState {
+struct EwsGuardianState {
     time: u64,
 
     temperature: f32,
@@ -100,7 +100,16 @@ struct GuardianState {
 
     hvac_active: bool,
     windows_down: bool,
+    state: GuardianState,
 };
+
+enum GuardianState {
+    Clear,
+    Monitoring,
+    Warning,
+    Critical,
+    Mitigating,
+}
 ```
 
 Warn Guardian:
@@ -115,6 +124,11 @@ enum Reason {
     Heat = 0,
 }
 ```
+
+The Guardian exposes this API as a WebSocket at `ws://localhost:8765/ws`.
+It sends a JSON `GuardianState` update every second. The `time` value is Unix
+time in milliseconds, and `state` is the Guardian's current state enum. EWS
+warnings are received as JSON `EWSWarn` messages on the same connection.
 
 ## Development Journey
 
