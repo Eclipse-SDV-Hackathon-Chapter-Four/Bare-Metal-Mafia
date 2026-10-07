@@ -263,6 +263,14 @@ pub async fn open_up_transport(
     UPTransportZenoh::try_init_log_from_env();
 
     let mut config = zenoh::Config::default();
+    // "client" mode only connects out to ZENOH_CONNECT - it never opens its
+    // own listener. Zenoh's default "peer" mode does open one (including an
+    // IPv6 wildcard), which hard-fails with EAFNOSUPPORT on hosts/containers
+    // where IPv6 is disabled at the kernel level (e.g. AutoSD's default
+    // `ipv6.disable=1` boot param) and otherwise just adds noisy, pointless
+    // peer-scouting traffic since every service here already talks through
+    // a zenohd router, never directly to another peer.
+    let _ = config.insert_json5("mode", "\"client\"");
     if let Ok(endpoint) = std::env::var("ZENOH_CONNECT") {
         let payload = format!("[\"{}\"]", endpoint);
         let _ = config.insert_json5("connect/endpoints", &payload);
@@ -306,6 +314,11 @@ pub fn decode_json_payload<T: serde::de::DeserializeOwned>(
 
 pub async fn open_zenoh_session() -> Result<zenoh::Session, zenoh::Error> {
     let mut config = zenoh::Config::default();
+
+    // See open_up_transport() above for why: avoids opening a listener
+    // (which fails outright with IPv6 disabled at the kernel level) since
+    // this process only ever needs to connect out to ZENOH_CONNECT.
+    let _ = config.insert_json5("mode", "\"client\"");
 
     if let Ok(endpoint) = std::env::var("ZENOH_CONNECT") {
         let payload = format!("[\"{}\"]", endpoint);
