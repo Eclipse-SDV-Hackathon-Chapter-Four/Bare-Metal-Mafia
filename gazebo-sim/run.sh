@@ -134,7 +134,9 @@ start() {
     fi
   done
   say "Starting: $*"
-  dc up -d --no-deps "$@" || die "start failed"
+  # --remove-orphans: containers of services that no longer exist (e.g.
+  # ros-up-mapper from an older checkout) would hold ports like 8092.
+  dc up -d --no-deps --remove-orphans "$@" || die "start failed"
   say "Waiting for Gazebo (world, ROS 2 and both bridges)"
   wait_for 180 gazebo_alive || die "Gazebo did not come up. Look at: ./gazebo-sim/run.sh logs"
   echo "   Gazebo is up (mode ${mode}, GUI $([ "${GUI}" = 1 ] && echo on || echo off))."
