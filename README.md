@@ -218,3 +218,11 @@ The full walkthrough is in [docs/Tutorial.md](docs/Tutorial.md).
 - [ ] openDuT manages the topology change
 - [ ] At least one physical embedded endpoint (AZ3166 with ThreadX)
 - [ ] Identical service artifacts before and after the configuration change
+
+## Pi credentials
+
+- Hostname: pi
+- Username: pi
+- Password: pi
+
+Connect via ssh: `ssh pi@pi`
