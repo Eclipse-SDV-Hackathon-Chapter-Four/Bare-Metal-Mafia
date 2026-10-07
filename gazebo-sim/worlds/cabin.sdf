@@ -8,8 +8,9 @@
       body               floor, roof, walls, rear-left door with window opening
       seat_row2          rear seat; contact sensor on the cushion
       window_row2_left   rear-left glass on a prismatic joint (axis down = open)
-    child_seat     free box used as a "child seat" test object; starts on the
-                   ground next to the car, moved with gazebo-sim/child-seat.sh
+    child_seat     a toddler in a child seat (visual) on a free rigid body;
+                   starts on the ground next to the car, moved with
+                   gazebo-sim/child-seat.sh
 
   @WINDOW_TRAVEL_M@ is replaced by the launch file with travel_m from
   config/window.yaml. Run the world through the launch file, not directly.
@@ -97,12 +98,7 @@
           <pose>0 0 1.45 0 0 0</pose>
           <geometry><box><size>2.0 1.5 0.05</size></box></geometry>
         </collision>
-        <visual name="roof_visual">
-          <pose>0 0 1.45 0 0 0</pose>
-          <geometry><box><size>2.0 1.5 0.05</size></box></geometry>
-          <material><ambient>0.1 0.3 0.6 0.4</ambient><diffuse>0.1 0.3 0.6 0.4</diffuse></material>
-          <transparency>0.6</transparency>
-        </visual>
+        <!-- no roof visual: the GUI camera looks into the cabin from above -->
 
         <collision name="front_wall_collision">
           <pose>1.0 0 0.9 0 0 0</pose>
@@ -248,13 +244,19 @@
         <visual name="glass_visual">
           <geometry><box><size>0.9 0.01 0.4</size></box></geometry>
           <material>
-            <ambient>0.6 0.8 0.9 0.5</ambient>
-            <diffuse>0.6 0.8 0.9 0.5</diffuse>
+            <ambient>0.3 0.85 1.0 1</ambient>
+            <diffuse>0.3 0.85 1.0 1</diffuse>
+            <emissive>0.05 0.25 0.35 1</emissive>
           </material>
-          <transparency>0.5</transparency>
+          <transparency>0.25</transparency>
         </visual>
       </link>
 
+      <!--
+        Damping and cmd_max (max motor force) limit the glass to roughly
+        window-motor speed, ~0.15 m/s, so a full stroke takes a few seconds
+        instead of snapping into place.
+      -->
       <joint name="window_row2_left_joint" type="prismatic">
         <parent>body</parent>
         <child>window_row2_left</child>
@@ -265,7 +267,7 @@
             <upper>@WINDOW_TRAVEL_M@</upper>
           </limit>
           <dynamics>
-            <damping>2.0</damping>
+            <damping>40.0</damping>
           </dynamics>
         </axis>
       </joint>
@@ -277,6 +279,8 @@
         <p_gain>200</p_gain>
         <i_gain>0</i_gain>
         <d_gain>30</d_gain>
+        <cmd_max>6</cmd_max>
+        <cmd_min>-6</cmd_min>
       </plugin>
 
       <plugin filename="ignition-gazebo-joint-state-publisher-system"
@@ -286,23 +290,89 @@
       </plugin>
     </model>
 
-    <!-- Test object: starts on the ground beside the rear-left door (absent). -->
+    <!--
+      Test object: a toddler sitting in a child seat, facing forward (+x).
+      Origin at the bottom centre of the seat base. One rigid link: only the
+      seat base and backrest collide; the child is visual only. Starts on the
+      ground beside the rear-left door (= absent); child-seat.sh moves it.
+    -->
     <model name="child_seat">
-      <pose>-0.6 2.0 0.15 0 0 0</pose>
+      <pose>-0.6 1.4 0.01 0 0 0</pose>
       <link name="link">
         <inertial>
-          <mass>5.0</mass>
+          <pose>-0.05 0 0.25 0 0 0</pose>
+          <mass>15.0</mass>
           <inertia>
-            <ixx>0.104</ixx><iyy>0.104</iyy><izz>0.133</izz>
+            <ixx>0.65</ixx><iyy>0.65</iyy><izz>0.4</izz>
             <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
           </inertia>
         </inertial>
-        <collision name="collision">
-          <geometry><box><size>0.4 0.4 0.3</size></box></geometry>
+
+        <!-- child seat shell -->
+        <collision name="base_collision">
+          <pose>0 0 0.04 0 0 0</pose>
+          <geometry><box><size>0.4 0.4 0.08</size></box></geometry>
         </collision>
-        <visual name="visual">
-          <geometry><box><size>0.4 0.4 0.3</size></box></geometry>
+        <visual name="base_visual">
+          <pose>0 0 0.04 0 0 0</pose>
+          <geometry><box><size>0.4 0.4 0.08</size></box></geometry>
           <material><ambient>0.9 0.5 0.1 1</ambient><diffuse>0.9 0.5 0.1 1</diffuse></material>
+        </visual>
+        <collision name="backrest_collision">
+          <pose>-0.17 0 0.355 0 0 0</pose>
+          <geometry><box><size>0.06 0.4 0.55</size></box></geometry>
+        </collision>
+        <visual name="backrest_visual">
+          <pose>-0.17 0 0.355 0 0 0</pose>
+          <geometry><box><size>0.06 0.4 0.55</size></box></geometry>
+          <material><ambient>0.9 0.5 0.1 1</ambient><diffuse>0.9 0.5 0.1 1</diffuse></material>
+        </visual>
+        <visual name="side_left_visual">
+          <pose>-0.03 0.18 0.22 0 0 0</pose>
+          <geometry><box><size>0.26 0.04 0.28</size></box></geometry>
+          <material><ambient>0.9 0.5 0.1 1</ambient><diffuse>0.9 0.5 0.1 1</diffuse></material>
+        </visual>
+        <visual name="side_right_visual">
+          <pose>-0.03 -0.18 0.22 0 0 0</pose>
+          <geometry><box><size>0.26 0.04 0.28</size></box></geometry>
+          <material><ambient>0.9 0.5 0.1 1</ambient><diffuse>0.9 0.5 0.1 1</diffuse></material>
+        </visual>
+
+        <!-- child: legs stretched forward, torso, arms, head with eyes -->
+        <visual name="child_legs_visual">
+          <pose>0.08 0 0.125 0 0 0</pose>
+          <geometry><box><size>0.38 0.2 0.09</size></box></geometry>
+          <material><ambient>0.15 0.25 0.6 1</ambient><diffuse>0.15 0.25 0.6 1</diffuse></material>
+        </visual>
+        <visual name="child_torso_visual">
+          <pose>-0.06 0 0.32 0 0 0</pose>
+          <geometry><cylinder><radius>0.1</radius><length>0.3</length></cylinder></geometry>
+          <material><ambient>0.85 0.1 0.15 1</ambient><diffuse>0.85 0.1 0.15 1</diffuse></material>
+        </visual>
+        <visual name="child_arm_left_visual">
+          <pose>0.0 0.13 0.3 0 -0.6 0</pose>
+          <geometry><cylinder><radius>0.032</radius><length>0.24</length></cylinder></geometry>
+          <material><ambient>0.85 0.1 0.15 1</ambient><diffuse>0.85 0.1 0.15 1</diffuse></material>
+        </visual>
+        <visual name="child_arm_right_visual">
+          <pose>0.0 -0.13 0.3 0 -0.6 0</pose>
+          <geometry><cylinder><radius>0.032</radius><length>0.24</length></cylinder></geometry>
+          <material><ambient>0.85 0.1 0.15 1</ambient><diffuse>0.85 0.1 0.15 1</diffuse></material>
+        </visual>
+        <visual name="child_head_visual">
+          <pose>-0.06 0 0.56 0 0 0</pose>
+          <geometry><sphere><radius>0.095</radius></sphere></geometry>
+          <material><ambient>0.95 0.78 0.65 1</ambient><diffuse>0.95 0.78 0.65 1</diffuse></material>
+        </visual>
+        <visual name="child_eye_left_visual">
+          <pose>0.025 0.035 0.58 0 0 0</pose>
+          <geometry><sphere><radius>0.015</radius></sphere></geometry>
+          <material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material>
+        </visual>
+        <visual name="child_eye_right_visual">
+          <pose>0.025 -0.035 0.58 0 0 0</pose>
+          <geometry><sphere><radius>0.015</radius></sphere></geometry>
+          <material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material>
         </visual>
       </link>
     </model>

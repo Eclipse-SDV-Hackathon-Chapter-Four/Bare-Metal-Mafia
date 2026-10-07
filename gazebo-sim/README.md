@@ -53,7 +53,15 @@ docker compose -f docker-compose.yml -f gazebo-sim/compose.gui.yml --profile gaz
 `compose.gui.yml` sets `GZ_GUI=true`, forwards `DISPLAY` and
 `/tmp/.X11-unix`, and passes `/dev/dri` for GPU acceleration. With
 `GZ_GUI=true` the launch file runs `ign gazebo -r` (server **and** GUI in one
-process; `ign gazebo -g` alone would only start a client with no server).
+process; `ign gazebo -g` alone would only start a client with no server)
+with [`config/gui.config`](config/gui.config): the camera starts outside the
+car, above the rear-left door, so you see the window face-on and look into
+the cabin from above (the cabin has no roof visual for that reason). Orbit
+with the mouse; the camera button (or service `/gui/screenshot`) saves a PNG
+inside the container. Closing the GUI window stops the simulation and the
+container, because both run in one process.
+
+Then run the guided demo ([Demo](#demo)) and watch it in that window.
 
 If the GUI window stays black or Ogre fails to start (no usable GPU, a VM,
 NVIDIA without the container toolkit), fall back to software rendering:
@@ -75,10 +83,10 @@ Use the topics and the test script instead. WSLg may work but is untested.
 | Entity | Notes |
 |---|---|
 | `ground_plane` | static |
-| `cabin` / `body` | floor, roof, walls, rear-left door with a window opening, welded to the world |
+| `cabin` / `body` | floor, roof (collision only, invisible), walls, rear-left door with a window opening, welded to the world |
 | `cabin` / `seat_row2` | rear seat (base, cushion, backrest); **contact sensor** on the cushion collision |
 | `cabin` / `window_row2_left` | glass on the prismatic joint `window_row2_left_joint`, axis pointing down, `<gravity>false</gravity>`, visual only (no collision) |
-| `child_seat` | free 0.4 × 0.4 × 0.3 m box, starts on the ground beside the car |
+| `child_seat` | a toddler (primitives: head, torso, arms, legs) in an orange child seat; one free rigid body, only the seat base and backrest collide. Starts on the ground beside the rear-left door |
 
 World systems: Physics, UserCommands (for `set_pose`), SceneBroadcaster (for
 the GUI), Contact. Model systems: JointPositionController and
@@ -133,7 +141,19 @@ carries **metres**; whoever speaks percent (the later uProtocol bridge,
 following the window controller's `window_percentage`) must apply this
 mapping. `travel_m` may not exceed 0.40 m, the height of the opening.
 
-## Try it
+## Demo
+
+```bash
+COMPOSE_CMD="docker compose" ./gazebo-sim/demo.sh
+```
+
+Plays a short story with pauses (`DEMO_PAUSE_S`, default 3 s), best watched
+in the GUI: child seat outside → child placed on the rear seat (contact
+sensor fires) → window 25 % (Guardian stage 2) → 100 % → closed → child
+taken out (contacts stop). Each step prints what the ROS 2 side measured.
+Takes about a minute.
+
+## Try it yourself
 
 ```bash
 docker compose --profile gazebo exec gazebo-sim bash
@@ -153,7 +173,8 @@ COMPOSE_CMD="docker compose" ./gazebo-sim/child-seat.sh remove   # back onto the
 ```
 
 `child-seat.sh` calls the Fortress UserCommands service
-`/world/cabin/set_pose`; the box drops 1 cm onto the cushion and rests there.
+`/world/cabin/set_pose`; the child seat drops 1 cm onto the cushion and
+rests there. In the GUI you can also drag it with the transform tool.
 
 ## Smoke test
 
@@ -185,6 +206,8 @@ script exits 1 if any check fails. It checks:
 | `config/bridge.yaml` | `ros_gz_bridge` topic configuration |
 | `launch/gazebo_sim.launch.py` | renders the world, starts Gazebo and the bridge; stops both if one exits |
 | `compose.gui.yml` | Linux-only GUI override |
+| `config/gui.config` | GUI layout and start camera (GUI mode only) |
+| `demo.sh` | guided demo, watch it in the GUI |
 | `child-seat.sh` | place / remove the child seat test object |
 | `tools/sim_check.py` | ROS 2 checks used by the smoke test |
 | `test-window.sh` | smoke test |
@@ -216,8 +239,10 @@ stack's build.
 - **Window glass has no collision.** It cannot pinch or be blocked; this
   avoids fighting the door frame and keeps the controller simple.
 - **Simplified dynamics.** The window is position-controlled by a PID
-  (`p=200`, `d=30`) with gravity off on the glass; it moves faster than a real
-  window motor and has no end-stop behaviour beyond the joint limits.
+  (`p=200`, `d=30`) with gravity off on the glass. Joint damping (40 N·s/m)
+  and a force limit (`cmd_max` 6 N) cap it at roughly window-motor speed,
+  ~0.15 m/s (a full stroke takes about 3 s); it settles within ~2 mm of the
+  target and has no end-stop behaviour beyond the joint limits.
 - **Contact sensor is binary in practice.** It reports touching collisions,
   not weight or occupant class.
 - **Contact messages arrive at physics rate.** Fortress' Contact system
@@ -236,7 +261,7 @@ stack's build.
   `window-controller-sim`) or only mirror it.
 - Cabin temperature is not simulated in Gazebo; `temperature-sim` stays the
   source.
-- Spawning or deleting the child seat (instead of moving one fixed box) via
+- Spawning or deleting the child seat (instead of moving one fixed model) via
   `/world/cabin/create` and `/world/cabin/remove` if multiple occupants are
   needed.
 - GUI on WSLg is untested.

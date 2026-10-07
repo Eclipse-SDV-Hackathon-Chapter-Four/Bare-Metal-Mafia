@@ -15,11 +15,12 @@ COMPOSE="${COMPOSE_CMD:-podman-compose}"
 COMPOSE_FILE="${ROOT_DIR}/docker-compose.yml"
 EXEC_SIM=(${COMPOSE} --profile gazebo -f "${COMPOSE_FILE}" exec gazebo-sim)
 
-# Seat cushion top is z = 0.625 in worlds/cabin.sdf; the box is 0.3 m tall,
-# so its centre goes 1 cm above resting height and it drops onto the cushion.
+# The child_seat model origin is the bottom of its base. Seat cushion top is
+# z = 0.625 in worlds/cabin.sdf, so the model goes 1 cm above the cushion
+# (or the ground) and drops onto it.
 case "${1:-}" in
-  place)  POSE='name: "child_seat", position: {x: -0.6, y: 0.0, z: 0.785}, orientation: {w: 1}' ;;
-  remove) POSE='name: "child_seat", position: {x: -0.6, y: 2.0, z: 0.16}, orientation: {w: 1}' ;;
+  place)  POSE='name: "child_seat", position: {x: -0.6, y: 0.0, z: 0.635}, orientation: {w: 1}' ;;
+  remove) POSE='name: "child_seat", position: {x: -0.6, y: 1.4, z: 0.01}, orientation: {w: 1}' ;;
   *) echo "usage: $0 place|remove" >&2; exit 2 ;;
 esac
 

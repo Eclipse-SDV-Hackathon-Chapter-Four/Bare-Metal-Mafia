@@ -5,7 +5,8 @@
 1. Reads config/window.yaml and writes travel_m into the window joint limit
    of worlds/cabin.sdf (rendered to /tmp/gazebo_sim/cabin.sdf).
 2. Starts `ign gazebo -s -r` (server only, headless) or, with gui:=true,
-   `ign gazebo -r` (server and GUI client in one process).
+   `ign gazebo -r --gui-config config/gui.config` (server and GUI client in
+   one process; closing the GUI window therefore stops the container).
 3. Starts ros_gz_bridge's parameter_bridge with config/bridge.yaml.
 
 If either process exits, the whole launch shuts down so the container stops
@@ -57,9 +58,13 @@ def _launch_setup(context):
     verbosity = LaunchConfiguration('verbosity').perform(context)
 
     world = _render_world(share)
-    gz_cmd = ['ign', 'gazebo', '-r', '-v', verbosity, world]
-    if not gui:
+    gz_cmd = ['ign', 'gazebo', '-r', '-v', verbosity]
+    if gui:
+        # Start camera aimed at the rear-left door and seat (config/gui.config).
+        gz_cmd += ['--gui-config', os.path.join(share, 'config', 'gui.config')]
+    else:
         gz_cmd.insert(2, '-s')
+    gz_cmd.append(world)
 
     gazebo = ExecuteProcess(cmd=gz_cmd, name='gazebo', output='screen')
     bridge = Node(
