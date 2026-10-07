@@ -20,6 +20,7 @@ ros2-hvac/.artifact-stage/
 # ── ThreadX / CMake / Renode build outputs ───────────────────────────────────
 threadx-temp-sensor/build*/
 threadx-temp-sensor/out/
+az3166-sensor-bridge-firmware/build*/
 *.elf
 *.map
 *.o
