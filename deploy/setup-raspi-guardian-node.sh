@@ -3,8 +3,9 @@
 # Turn a Raspberry Pi (64-bit Raspberry Pi OS / any Debian-based ARM64 Linux)
 # into a shared, always-on Guardian Loop node: runs the FULL docker-compose
 # stack (zenohd, guardian, sensors, actuation chain, dashboard) locally,
-# plus the S32K148 DoIP bridge with real access to the automotive Ethernet
-# hardware plugged directly into the Pi.
+# plus the S32K148 DoIP bridge (automotive Ethernet) and the AZ3166 ThreadX
+# sensor bridge (USB serial), both with real access to the hardware plugged
+# directly into the Pi.
 #
 # Why a Pi instead of a laptop: this removes the whole "bridge runs on one
 # laptop, Guardian runs on another, they have to find each other on the
@@ -12,8 +13,9 @@
 # that can just stay on and plugged in - the team reaches the dashboard
 # at http://<pi-ip>:8094 from any device on the same network, no laptop
 # needs to be open. `network_mode: host` (used by the DoIP bridge service)
-# only actually grants direct access to a physical adapter on real Linux -
-# which a Raspberry Pi is, unlike Docker Desktop on Windows/macOS.
+# and the AZ3166 bridge's `devices:` USB-serial passthrough both only
+# actually grant direct hardware access on real Linux - which a Raspberry
+# Pi is, unlike Docker Desktop on Windows/macOS.
 #
 # What this script does:
 #   1. Install Docker + the Compose plugin, if missing.
@@ -21,17 +23,22 @@
 #   3. Detect the automotive Ethernet USB adapter and configure a static IP
 #      on it (matches the convention used by verify-automotive-ethernet.sh:
 #      192.168.0.1/24, board at 192.168.0.200).
-#   4. Bring up the full stack, including the s32k148 profile (DoIP bridge).
-#   5. Print the Pi's LAN IP and the dashboard URL for the rest of the team.
+#   4. Add this user to the `dialout` group so the AZ3166's USB-serial
+#      virtual COM port (/dev/ttyACM0) is accessible without root.
+#   5. Bring up the full stack, including the s32k148 and az3166 profiles.
+#   6. Print the Pi's LAN IP and the dashboard URL for the rest of the team.
 #
 # USAGE
-#   ./setup-raspi-guardian-node.sh [--local-ip 192.168.0.1] [--prefix 24] [--no-s32k148]
+#   ./setup-raspi-guardian-node.sh [--local-ip 192.168.0.1] [--prefix 24] \
+#       [--no-s32k148] [--no-az3166]
 #
 #   --local-ip     Static IP to assign on the automotive Ethernet interface.
 #   --prefix       Subnet prefix length (default: 24).
 #   --no-s32k148   Skip the S32K148 DoIP bridge profile (just run the base
 #                  simulated stack, e.g. if the hardware isn't plugged in
 #                  yet).
+#   --no-az3166    Skip the AZ3166 ThreadX sensor bridge profile (e.g. if
+#                  the board isn't plugged in yet).
 #
 # PREREQUISITES (physical, before running this)
 #   - TJA1101 daughterboard jumper removed (Master mode)
@@ -41,6 +48,10 @@
 #   - S32K148 already flashed with the referenceApp + WindowPosition DID
 #     (0xCF20) - see firmware/S32K148_HARDWARE_BRINGUP.md and
 #     firmware/0001-windowposition-did-0xCF20.patch in this repo for how.
+#   - AZ3166 plugged in via USB (the same cable carries both the ST-Link
+#     debug session and the UART data channel used by the sensor bridge)
+#   - AZ3166 already flashed with the ThreadX sensor bridge firmware - see
+#     az3166-sensor-bridge-firmware/ in this repo.
 
 set -euo pipefail
 
@@ -49,6 +60,7 @@ REPO_DIR="$HOME/Bare-Metal-Mafia"
 LOCAL_IP="192.168.0.1"
 PREFIX="24"
 RUN_S32K148=1
+RUN_AZ3166=1
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -66,6 +78,7 @@ while [[ $# -gt 0 ]]; do
         --local-ip)    LOCAL_IP="$2"; shift 2 ;;
         --prefix)      PREFIX="$2"; shift 2 ;;
         --no-s32k148)  RUN_S32K148=0; shift ;;
+        --no-az3166)   RUN_AZ3166=0; shift ;;
         -h|--help)
             grep '^#' "$0" | sed 's/^# \{0,1\}//'
             exit 0
@@ -134,20 +147,40 @@ else
     echo "          ip4 $LOCAL_IP/$PREFIX"
 fi
 
-# --- 4. Bring up the stack ------------------------------------------------------
+# --- 4. USB-serial access for the AZ3166 ---------------------------------------
+if [[ "$RUN_AZ3166" -eq 1 ]]; then
+    step "AZ3166 USB-serial access"
+    if groups "$USER" | grep -qw dialout; then
+        ok "$USER is already in the dialout group."
+    else
+        sudo usermod -aG dialout "$USER"
+        warn "Added $USER to the dialout group - log out/in (or reboot) for this to take effect."
+    fi
+    if [[ -e /dev/ttyACM0 ]]; then
+        ok "Found /dev/ttyACM0."
+    else
+        warn "/dev/ttyACM0 not found - plug in the AZ3166 (or check \`ls /dev/ttyACM*\` for a different node)."
+    fi
+fi
+
+# --- 5. Bring up the stack -------------------------------------------------------
 step "Starting the Guardian stack"
 cd "$REPO_DIR"
-if [[ "$RUN_S32K148" -eq 1 ]]; then
-    echo "Building and starting base stack + s32k148 (DoIP bridge) profile..."
-    docker compose --profile s32k148 up -d --build
+COMPOSE_PROFILES=()
+[[ "$RUN_S32K148" -eq 1 ]] && COMPOSE_PROFILES+=(--profile s32k148)
+[[ "$RUN_AZ3166" -eq 1 ]]  && COMPOSE_PROFILES+=(--profile az3166)
+
+if [[ ${#COMPOSE_PROFILES[@]} -gt 0 ]]; then
+    echo "Building and starting base stack + ${COMPOSE_PROFILES[*]}..."
+    docker compose "${COMPOSE_PROFILES[@]}" up -d --build
 else
-    echo "Building and starting base stack only (--no-s32k148 given)..."
+    echo "Building and starting base stack only (--no-s32k148 --no-az3166 given)..."
     docker compose up -d --build zenohd artifact-server guardian dashboard \
         child-presence-sim temperature-sim actuation-adapter cda-sim window-controller-sim
 fi
 ok "Stack is up."
 
-# --- 5. Print access info ---------------------------------------------------------
+# --- 6. Print access info ---------------------------------------------------------
 step "Access"
 PI_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 echo "Dashboard (share this with the team):"

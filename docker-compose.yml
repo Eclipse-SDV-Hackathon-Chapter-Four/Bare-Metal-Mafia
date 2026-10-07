@@ -66,6 +66,11 @@ services:
       - guardian
       - zenohd
 
+  # NOTE: disable this service (comment it out / don't include its profile)
+  # when az3166-serial-bridge is active - both publish to the same
+  # CabinTemperatureEvent topic (vss_cabin_temperature_uri) and will fight
+  # over the value Guardian reacts to. Same accepted tradeoff as the
+  # existing threadx-temp-sensor SOME/IP path below.
   temperature-sim:
     build:
       context: .
@@ -351,6 +356,41 @@ services:
       ZENOH_CONNECT: tcp/127.0.0.1:7447
     profiles:
       - s32k148
+
+  # ── Stage E: real AZ3166 (Eclipse ThreadX) sensor bridge (UART → uProtocol) ─
+  #
+  # Reads LSM6DSL accelerometer + die-temperature readings from a real
+  # MXChip AZ3166 over its ST-Link virtual COM port (same USB cable used to
+  # flash it) and republishes the temperature onto the EXISTING
+  # CabinTemperatureEvent topic - a true drop-in real sensor that Guardian's
+  # state machine reacts to without any guardian.rs change - plus a richer
+  # IMU reading on a new dashboard-only topic.
+  #
+  # IMPORTANT: a USB serial device needs the SAME kind of direct host
+  # access as the automotive-Ethernet adapter and the S32K148 CDA. Docker
+  # Desktop on Windows/macOS cannot grant a container access to a host COM
+  # port (WSL2/Hyper-V isolation) - the `devices:` mapping below only
+  # actually works on a real Linux host (e.g. the Raspberry Pi). On
+  # Windows/macOS, run this binary natively instead:
+  #   cargo run --bin az3166_serial_bridge
+  # with AZ3166_SERIAL_PORT=COM<n> (check Device Manager once plugged in)
+  # and ZENOH_CONNECT pointed at wherever zenohd is reachable.
+  az3166-serial-bridge:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: az3166_serial_bridge
+    image: hack-to-the-future/az3166-serial-bridge:stage-e
+    devices:
+      - "/dev/ttyACM0:/dev/ttyACM0"   # confirm exact node via `dmesg`/`ls /dev/ttyACM*` once plugged into the host
+    environment:
+      AZ3166_SERIAL_PORT: "/dev/ttyACM0"
+      AZ3166_BAUD_RATE: "115200"
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/127.0.0.1:7447
+    profiles:
+      - az3166
 
 networks:
   default:
