@@ -338,9 +338,9 @@ pub fn evaluate_state(child_present: bool, temperature_celsius: f32) -> Guardian
         return GuardianState::Clear;
     }
 
-    if temperature_celsius >= 40.0 {
+    if temperature_celsius >= 28.5 {
         GuardianState::Critical
-    } else if temperature_celsius >= 32.0 {
+    } else if temperature_celsius >= 25.0 {
         GuardianState::Warning
     } else {
         GuardianState::Monitoring
