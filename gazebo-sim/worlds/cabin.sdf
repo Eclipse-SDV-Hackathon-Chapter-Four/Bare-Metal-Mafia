@@ -33,6 +33,8 @@
       seat_row2          rear seat; contact sensor on the cushion
       window_row2_left   rear-left glass on a prismatic joint (axis down =
                          open); slides into the rear-left door
+                         All glass except the windshield is opaque black so
+                         the opening rear-left window is easy to see.
     child_seat      a toddler in a child seat (visual) on a free rigid body;
                     starts on the ground next to the car, moved with
                     gazebo-sim/child-seat.sh
@@ -527,20 +529,17 @@
         <visual name="glass_front_left_visual">
           <pose>0.5 0.75 1.06 0 0 0</pose>
           <geometry><box><size>0.85 0.01 0.36</size></box></geometry>
-          <material><ambient>0.25 0.45 0.55 0.35</ambient><diffuse>0.35 0.6 0.7 0.35</diffuse><specular>0.9 0.9 0.9 1</specular></material>
-          <transparency>0.55</transparency>
+          <material><ambient>0.01 0.01 0.01 1</ambient><diffuse>0.02 0.02 0.02 1</diffuse><specular>0.5 0.5 0.5 1</specular></material>
         </visual>
         <visual name="glass_front_right_visual">
           <pose>0.5 -0.75 1.06 0 0 0</pose>
           <geometry><box><size>0.85 0.01 0.36</size></box></geometry>
-          <material><ambient>0.25 0.45 0.55 0.35</ambient><diffuse>0.35 0.6 0.7 0.35</diffuse><specular>0.9 0.9 0.9 1</specular></material>
-          <transparency>0.55</transparency>
+          <material><ambient>0.01 0.01 0.01 1</ambient><diffuse>0.02 0.02 0.02 1</diffuse><specular>0.5 0.5 0.5 1</specular></material>
         </visual>
         <visual name="glass_rear_right_visual">
           <pose>-0.5 -0.75 1.075 0 0 0</pose>
           <geometry><box><size>0.9 0.01 0.4</size></box></geometry>
-          <material><ambient>0.25 0.45 0.55 0.35</ambient><diffuse>0.35 0.6 0.7 0.35</diffuse><specular>0.9 0.9 0.9 1</specular></material>
-          <transparency>0.55</transparency>
+          <material><ambient>0.01 0.01 0.01 1</ambient><diffuse>0.02 0.02 0.02 1</diffuse><specular>0.5 0.5 0.5 1</specular></material>
         </visual>
         <visual name="hood_visual">
           <pose>1.575 0 0.62 0 0 0</pose>
@@ -785,8 +784,7 @@
         <visual name="rear_window_visual">
           <pose>-0.93 0 1.16 0 0.27 0</pose>
           <geometry><box><size>0.02 1.4 0.55</size></box></geometry>
-          <material><ambient>0.06 0.09 0.12 0.6</ambient><diffuse>0.1 0.15 0.2 0.6</diffuse><specular>1 1 1 1</specular></material>
-          <transparency>0.3</transparency>
+          <material><ambient>0.01 0.01 0.01 1</ambient><diffuse>0.02 0.02 0.02 1</diffuse><specular>0.5 0.5 0.5 1</specular></material>
         </visual>
         <visual name="c_pillar_left_visual">
           <pose>-0.93 0.73 1.16 0 0.27 0</pose>
@@ -879,12 +877,7 @@
         </inertial>
         <visual name="glass_visual">
           <geometry><box><size>0.9 0.01 0.4</size></box></geometry>
-          <material>
-            <ambient>0.25 0.45 0.55 0.35</ambient>
-            <diffuse>0.35 0.6 0.7 0.35</diffuse>
-            <specular>0.9 0.9 0.9 1</specular>
-          </material>
-          <transparency>0.35</transparency>
+          <material><ambient>0.01 0.01 0.01 1</ambient><diffuse>0.02 0.02 0.02 1</diffuse><specular>0.5 0.5 0.5 1</specular></material>
         </visual>
       </link>
 
