@@ -78,8 +78,8 @@ forks both from one multi-threaded process, and the forked server
 intermittently hung before loading the world.) The GUI uses
 [`config/gui.config`](config/gui.config): the camera starts outside the
 car on its left side, slightly above it, so you see the rear-left window
-face-on, look into the open-top cabin and see the child seat next to the
-car. Orbit
+face-on, the child seat behind it (or next to the car) and the parking
+lot. Orbit
 with the mouse; the camera button (or service `/gui/screenshot`) saves a PNG
 inside the container. Closing the GUI window stops the simulation and the
 container (the launch file shuts everything down when one process exits).
@@ -101,16 +101,17 @@ Use the topics and the test script instead. WSLg may work but is untested.
 
 ## What is in the world
 
-`worlds/cabin.sdf`, primitives only (no meshes, no Fuel downloads): an
-open-top car (convertible, no roof, so the GUI can look inside) parked in a
-parent-and-child bay of a small parking lot.
+`worlds/cabin.sdf`, primitives only (no meshes, no Fuel downloads): a car
+with roof and sunroof parked in a parent-and-child bay of a small parking
+lot. The child seat on the rear seat is visible through the rear-left
+window.
 
 | Entity | Notes |
 |---|---|
 | `ground_plane` | asphalt |
 | `parking_lot` | static, visual only: bay markings, the blue parent-and-child bay with sign, curb, green strip, trees, street lamp |
 | `parked_car_1`, `parked_car_2` | static neighbours in the bays to the right, visual only |
-| `cabin` / `body` | our car, welded to the world: floor, doors up to the belt line, hood, trunk, windshield, fixed frameless side windows, front seats, steering wheel, wheels, lights, mirrors, plates |
+| `cabin` / `body` | our car, welded to the world: floor, doors up to the belt line, hood, trunk, windshield, fixed side windows, roof with sunroof, pillars and rear window (roof parts visual only), front seats, steering wheel, wheels, lights, mirrors, plates |
 | `cabin` / `seat_row2` | rear seat (base, cushion, backrest); **contact sensor** on the cushion collision |
 | `cabin` / `window_row2_left` | rear-left glass on the prismatic joint `window_row2_left_joint`, axis pointing down (slides into the rear-left door), `<gravity>false</gravity>`, visual only (no collision) |
 | `child_seat` | a toddler in a child seat (head, torso, arms, legs; orange seat shell) on one free rigid body; only the seat base and backrest collide. Starts on the ground beside the rear-left door |
