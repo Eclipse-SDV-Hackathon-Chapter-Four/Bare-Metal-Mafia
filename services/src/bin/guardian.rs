@@ -172,27 +172,35 @@ impl GuardianRuntime {
 
         match base {
             GuardianState::Critical(reason) => {
-                self.current_state = if reason == DangerReason::Heat
-                    && (self.window_stage_requested || self.hvac_active)
-                {
-                    GuardianState::Mitigating(reason)
-                } else {
-                    GuardianState::Critical(reason)
-                };
+                match reason {
+                    DangerReason::Heat => {
+                        self.current_state = if self.window_stage_requested || self.hvac_active {
+                            GuardianState::Mitigating(reason)
+                        } else {
+                            GuardianState::Critical(reason)
+                        };
 
-                if reason == DangerReason::Heat && !self.window_stage_requested {
-                    if self.hvac_fault_active {
-                        if !self.mitigation_pending {
-                            trigger_mitigation = true;
+                        if !self.window_stage_requested {
+                            if self.hvac_fault_active {
+                                if !self.mitigation_pending {
+                                    trigger_mitigation = true;
+                                }
+                            } else if !self.hvac_stage_requested {
+                                if !self.mitigation_pending {
+                                    trigger_mitigation = true;
+                                }
+                            } else if self.should_escalate_to_window() && !self.mitigation_pending {
+                                trigger_mitigation = true;
+                            }
                         }
-                    } else if !self.hvac_stage_requested {
-                        if !self.mitigation_pending {
-                            trigger_mitigation = true;
-                        }
-                    } else if self.should_escalate_to_window() && !self.mitigation_pending {
-                        trigger_mitigation = true;
+                    },
+
+                    DangerReason::Cold => {
+                        todo!();
                     }
                 }
+
+
             }
 
             _ => {
