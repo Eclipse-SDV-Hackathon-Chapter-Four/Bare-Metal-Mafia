@@ -4,8 +4,6 @@
 
 ### Guardian Loop — portable child presence detection
 
-**One feature. One codebase. Simulation, AutoSD, real hardware.**
-
 *Eclipse SDV Hackathon 2026 · [Hack to the Future](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/Hack-to-the-Future) challenge*
 
 **Stage 1** done · **Stage 2** done · **Stage 3** partial · **Stage 4** done · **Stage 5** partial
@@ -20,19 +18,20 @@
 
 Build a **Child Presence Detection and Mitigation** feature that:
 
-1. detects that a child is in the car,
-2. monitors cabin temperature,
-3. determines a hazard level,
-4. warns and intervenes (HVAC, windows, alarm, eCall),
+- detects a child in the car,
+- monitors the cabin temperature,
+- decides how dangerous the situation is,
+- warns and acts (air conditioning, windows, alarm).
 
-and keeps working unchanged while the world underneath it is swapped from
-simulators to embedded targets to real hardware.
+The feature must keep working unchanged while the hardware underneath it is swapped.
 
-> ### The Golden Rule
+> ### The one rule
 >
-> **The Guardian Loop business logic must not change between simulation and real hardware.**
+> **The Guardian Loop logic must not change between simulation and real hardware.**
 >
-> The Guardian therefore never addresses any of the following directly:
+> The Guardian therefore never talks directly to:
+> CAN, GPIO, serial ports, UDS, DoIP, SOME/IP, device paths or hardware addresses.
+> It only uses uProtocol service interfaces.
 >
 > | Forbidden inside Guardian | Use instead |
 > | --- | --- |
@@ -63,14 +62,12 @@ simulators to embedded targets to real hardware.
 flowchart LR
     subgraph SENSE["Sense"]
         CPS["Child Presence<br/>(sim)"]
-        TMP["Temperature<br/>(sim / AZ3166 ThreadX)"]
+        TMP["Temperature<br/>(sim / AZ3166)"]
     end
 
     subgraph HPC["AutoSD HPC"]
         GL["<b>Guardian Loop</b><br/>CLEAR → MONITORING →<br/>WARNING → CRITICAL →<br/>MITIGATING"]
         AA["Actuation Adapter"]
-        EC["eCall / Notification<br/>(optional)"]
-        LOG["Logging / Diagnostics"]
     end
 
     subgraph ACT["Actuate"]
@@ -79,14 +76,12 @@ flowchart LR
         HVAC["ROS 2 HVAC<br/>(Eclipse Muto)"]
     end
 
-    CPS -->|"uProtocol pub/sub<br/>VSS events"| GL
-    TMP -->|"uProtocol pub/sub<br/>(SOME/IP bridge)"| GL
-    GL -->|"uProtocol RPC"| AA
-    GL -.-> EC
-    GL -.-> LOG
-    AA -->|"diag commands"| CDA
-    AA -->|"setpoints"| HVAC
-    CDA -->|"UDS-style"| WIN
+    CPS -->|"pub/sub"| GL
+    TMP -->|"pub/sub via SOME/IP bridge"| GL
+    GL -->|"RPC"| AA
+    AA --> CDA
+    AA --> HVAC
+    CDA --> WIN
 ```
 
 **Transport:** every uProtocol message passes through an Eclipse Zenoh router.
