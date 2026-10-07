@@ -228,8 +228,8 @@ impl GuardianRuntime {
         self.hvac_target_temperature_celsius = event.target_temperature_celsius;
 
         let state_critical = match self.current_state {
-            GuardianState::Critical(DangerReason::Heat)
-            | GuardianState::Mitigating(DangerReason::Heat) => true,
+            GuardianState::Critical(_)
+            | GuardianState::Mitigating(_) => true,
             _ => false,
         };
 
