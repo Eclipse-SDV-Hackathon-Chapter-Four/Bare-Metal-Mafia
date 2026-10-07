@@ -48,22 +48,48 @@ not simulated here.
 
 ## Step 1 — Get AutoSD onto the Pi
 
-Pre-built nightly images (developer variant, root login):
+**No Raspberry Pi 5 image exists as of 2026-10-07** - only `rpi4`. Checked
+the live directory listing directly (several `sig.centos.org` doc pages
+404'd that day, so don't trust an old cached guide over the actual
+directory). If the Pi earmarked for this is a 5, this step is blocked
+until CentOS Automotive SIG ships one.
+
+The current nightly `rpi4` developer image (filename changes with every
+nightly build - re-check the directory before using a stale name):
 
 ```bash
-# On your own Linux machine (needs a real SD card reader)
-wget https://autosd.sig.centos.org/AutoSD-10/nightly/sample-images/<pick-the-rpi4-developer-aarch64-image>.raw.xz
-unxz <image>.raw.xz
-sudo dd if=<image>.raw of=/dev/sdX status=progress bs=4M conv=fsync   # /dev/sdX = your SD card, NOT a partition
-sync
+# On a real Linux machine with an SD card reader (not this Windows laptop)
+BASE=https://autosd.sig.centos.org/AutoSD-10/nightly/sample-images
+FILE=auto-osbuild-rpi4-autosd10-developer-regular-aarch64-2920323994.b34b5e04.simg.xz
+
+wget "$BASE/$FILE" "$BASE/$FILE.sha256"
+sha256sum -c "$FILE.sha256"
+unxz "$FILE"
 ```
 
-Browse available builds at
-<https://autosd.sig.centos.org/AutoSD-10/nightly/sample-images/> and pick an
-`rpi4` + `developer` + `aarch64` image. Update the Pi 4's EEPROM first if
-it's old - an outdated EEPROM is a known cause of boot failures on this
-image. Default login is `root` / password `password` - **change this**
-before leaving the Pi on a network others can reach.
+The extension is **`.simg.xz`**, not the `.raw.xz` some older guides
+describe - that mismatch is exactly why the next step isn't "just `dd`
+it": check what you actually got before writing it to a card.
+
+```bash
+file auto-osbuild-rpi4-autosd10-developer-regular-aarch64-*.simg
+```
+
+- Says something like "DOS/MBR boot sector" / disk image → it's already a
+  raw disk image despite the `.simg` name; flash it directly:
+  ```bash
+  sudo dd if=<file>.simg of=/dev/sdX status=progress bs=4M conv=fsync   # /dev/sdX = the card itself, NOT a partition
+  sync
+  ```
+- Says "Android sparse image" → convert first (`simg2img`, package
+  `android-sdk-libsparse-utils` on Debian/Ubuntu), then `dd` the resulting
+  `.raw` file the same way.
+
+Update the Pi 4's EEPROM first if it's old - an outdated EEPROM is a known
+cause of boot failures on this image. Default login is `root` / `guest`
+with password `password` (per an older getting-started guide - verify on
+first boot, and **change it immediately** before the Pi is on any network
+others can reach).
 
 ## Step 2 — Install Podman + Ankaios
 
