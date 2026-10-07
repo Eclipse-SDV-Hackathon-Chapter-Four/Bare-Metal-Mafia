@@ -87,6 +87,51 @@ No service knows where any other service runs, and that is what makes the swap p
 
 ---
 
+#### Early Warning System (EWS) API
+
+Request Guardian State:
+
+```Rust
+struct EwsGuardianState {
+    time: u64,
+
+    temperature: f32,
+    child_presence: bool,
+    state: GuardianState,
+
+    hvac_active: bool,
+    hvac_target: f32,
+    hvac_fault: bool,
+};
+
+enum GuardianState {
+    Clear,
+    Monitoring,
+    Warning,
+    Critical,
+    Mitigating,
+}
+```
+
+Warn Guardian:
+
+```Rust
+struct EWSWarn {
+    time: u64,
+    reason: Reason,
+}
+
+enum Reason {
+    Reset,
+    Heat,
+}
+```
+
+The Guardian exposes this API as a WebSocket at `ws://localhost:8765/ws`.
+It sends a JSON `GuardianState` update every second. The `time` value is Unix
+time in milliseconds, and `state` is the Guardian's current state enum. EWS
+warnings are received as JSON `EWSWarn` messages on the same connection.
+
 ## Development Journey
 
 The official challenge progression, and where we stand:

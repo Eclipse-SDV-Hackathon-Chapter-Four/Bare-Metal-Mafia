@@ -315,7 +315,7 @@ pub async fn open_zenoh_session() -> Result<zenoh::Session, zenoh::Error> {
     zenoh::open(config).await
 }
 
-pub fn evaluate_state(child_present: bool, temperature_celsius: f32) -> GuardianState {
+pub fn evaluate_state(child_present: bool, temperature_celsius: f32, ews_warn: bool) -> GuardianState {
     if !child_present {
         return GuardianState::Clear;
     }
@@ -327,4 +327,10 @@ pub fn evaluate_state(child_present: bool, temperature_celsius: f32) -> Guardian
     } else {
         GuardianState::Monitoring
     }
+
+    if ews_warn {
+        return GuardianState::Warning;
+    }
+
+    return GuardianState::Monitoring;
 }
