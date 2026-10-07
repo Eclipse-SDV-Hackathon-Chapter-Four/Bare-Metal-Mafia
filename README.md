@@ -141,7 +141,8 @@ Ordered by what unblocks the most. Each goal names the stage it serves.
 | **OpenBSW Window Controller** | `services/src/bin/window_controller_sim.rs` | Done, simulated |
 | **ROS 2 HVAC workload**, Eclipse Muto with CAN bridge | `ros2-hvac/`, `services/src/bin/ros2_hvac_bridge.rs` | Done |
 | **Dashboard**, live one-page view | `services/src/bin/dashboard.rs`, port 8094 | Done |
-| **Gazebo cabin simulation**, Fortress world (window joint, seat contact) and `ros_gz_bridge`, profile `gazebo`, laptops only | `gazebo-sim/` | Step 1 done, **our own work** (not from the reference stack). Not yet bridged to uProtocol |
+| **Gazebo cabin simulation**, Fortress world (window joint, seat contact) and `ros_gz_bridge`, profile `gazebo`, laptops only | `gazebo-sim/` | Done, **our own work** (not from the reference stack) |
+| **Generic ROS 2 ↔ uProtocol bridge** (`ros-up-bridge`), YAML-mapped; mode *mirror*: Gazebo follows the window state | `ros-up-bridge/`, `services/src/bin/ros_up_mapper/` | Mirror done, **our own work** (not from the reference stack); mode *replace* open |
 | **AutoSD HPC deployment** | `deploy/` | Open |
 | **openDuT topology** | — | Open |
 | **eCall / Notification service** | — | Open, optional |
@@ -236,7 +237,8 @@ below the copyright and licence header.
 
 | Tool | Used for |
 |---|---|
-| Claude Code with Anthropic Claude Opus 5.5 (`claude-opus-5-5`) | `gazebo-sim/` (Gazebo simulation backend): code, configuration, tests and their documentation, plus the related additions to `docker-compose.yml` (the `gazebo-sim` service), to this README and [NOTICE.md](NOTICE.md) |
+| Claude Code with Anthropic Claude Opus 5.5 (`claude-opus-5-5`) | `gazebo-sim/` (Gazebo simulation backend) and most of `ros-up-bridge/` + `services/src/bin/ros_up_mapper/` (ROS 2 ↔ uProtocol bridge): code, configuration, tests and their documentation, plus the related additions to `docker-compose.yml` (the `gazebo-sim` service), to this README and [NOTICE.md](NOTICE.md) |
+| Claude Code with Anthropic Claude Fable 5.1 (`claude-fable-5-1`) | later parts of the bridge (setpoint repeat, test hardening), the separate Gazebo server/GUI start, and the publish-race fix in `services/src/bin/window_controller_sim.rs` (marked with `Assisted-by` comments in that file) |
 
 **How we mark it.** These are our project conventions on top of the
 guidelines, not requirements of the guidelines themselves:
