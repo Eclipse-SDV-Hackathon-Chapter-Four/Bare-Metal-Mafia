@@ -5,6 +5,13 @@ Hack to the Future – Guardian Loop: portable child presence detection that mov
 
 <!-- Assisted by Claude Code -->
 
+> Looking for the AutoSD + Eclipse Ankaios runtime instead of Raspberry Pi
+> OS + Docker Compose (the combination the hackathon challenge brief calls
+> out explicitly)? See
+> [`deploy/AUTOSD_ANKAIOS_PLAN.md`](deploy/AUTOSD_ANKAIOS_PLAN.md) - a
+> researched plan, not yet a finished script; it flags exactly what's
+> still unverified.
+
 The Pi hosts the entire Guardian Loop stack (Guardian, dashboard, sensors,
 actuation chain, the S32K148 DoIP bridge, and the AZ3166 ThreadX sensor
 bridge) locally, so the whole team reaches the dashboard over the network
