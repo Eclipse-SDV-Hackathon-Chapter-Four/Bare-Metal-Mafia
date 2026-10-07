@@ -75,20 +75,21 @@ Summary: temperature sensor, Guardian Loop and window motor all run on real hard
 - Gazebo cabin simulation (`gazebo-sim/`), our own work: a rear-left window joint that
   physically moves, a rear seat with a contact sensor, the car on a parking lot,
   and smoke tests.
-- `ros-up-bridge/`, also our own work: a generic, YAML-mapped ROS 2 to uProtocol bridge
-  with two modes. *mirror* - Gazebo follows the real window state. *replace* - Gazebo
+- The Gazebo to uProtocol bridge, also our own work: `gazebo-sim/bridge/ros_zenoh_bridge.py`
+  on the ROS 2 side and `services/src/bin/gazebo_bridge.rs` on the uProtocol side, with
+  two modes. *mirror* - Gazebo follows the real window state. *replace* - Gazebo
   replaces the window controller and the child presence simulator entirely.
-  Includes a runtime single-publisher guard and three test scripts.
-- `ros-up-bridge/demo-guardian.sh` runs the whole guided demo (Guardian + Gazebo + HVAC)
-  with live status lines.
+- `gazebo-sim/run.sh` is the one entry point: `./gazebo-sim/run.sh demo` runs the whole
+  guided demo (Guardian + Gazebo + HVAC) with live status lines, and
+  `./gazebo-sim/run.sh test` runs the end-to-end checks.
 - Documentation: [docs/Tutorial.md](Tutorial.md) walks through the stack service by
   service, from a plain `docker compose up` to the ThreadX and ROS 2 profiles.
 
 ### Found on the way
 
 - Publish race in `services/src/bin/window_controller_sim.rs`: a stale window state could
-  be published after a newer one. Found while testing `ros-up-bridge`, fixed, and written
-  up in `ros-up-bridge/README.md`.
+  be published after a newer one. Found while testing the Gazebo bridge, fixed, and marked
+  with `Assisted-by` comments in that file.
 
 ## What we didn't achieve
 
@@ -133,8 +134,8 @@ We follow the Eclipse Foundation's
 
 | Tool | Used for |
 |---|---|
-| Claude Opus 5.5 (`claude-opus-5-5`) | `gazebo-sim/`, most of `ros-up-bridge/` and `services/src/bin/ros_up_mapper/`, the notification service, and the related README / compose additions |
-| Claude Fable 5.1 (`claude-fable-5-1`) | the bridge's replace mode, parts of mirror mode, the split Gazebo server/GUI start, the `window_controller_sim` race fix |
+| Claude Opus 5.5 (`claude-opus-5-5`) | `gazebo-sim/` and `services/src/bin/gazebo_bridge.rs`, the notification service, and the related README / compose additions |
+| Claude Fable 5.1 (`claude-fable-5-1`) | the split Gazebo server/GUI start, the `window_controller_sim` race fix |
 | Claude Sonnet 5 | AZ3166 serial bridge, `deploy/setup-raspi-guardian-node.sh`, the AutoSD and S32K148 bring-up documents |
 | Claude Opus 5 | project overview, understanding the tasks, summarising the READMEs, and this document |
 
