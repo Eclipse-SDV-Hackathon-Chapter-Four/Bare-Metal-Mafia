@@ -1,0 +1,22 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "az3166-cortexm4",
+      "displayName": "AZ3166 / Cortex-M4 (real hardware)",
+      "description": "Cross-compiles with arm-none-eabi-gcc for the real STM32F412RG on the AZ3166 board. Produces az3166_sensor_bridge.bin for drag-and-drop flashing.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/az3166-cortexm4",
+      "toolchainFile": "${sourceDir}/cmake/arm-none-eabi-toolchain.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "az3166-cortexm4",
+      "configurePreset": "az3166-cortexm4"
+    }
+  ]
+}

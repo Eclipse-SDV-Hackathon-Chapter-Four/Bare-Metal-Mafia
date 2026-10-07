@@ -29,6 +29,7 @@ services:
       ZENOH_CONNECT: tcp/zenohd:7447
     ports:
       - "8080:8080"
+      - "8765:8765"
     depends_on:
       - actuation-adapter
       - zenohd
@@ -52,6 +53,18 @@ services:
     depends_on:
       - zenohd
 
+  notification:
+    build:
+      context: ./notification
+      dockerfile: Containerfile
+    image: hack-to-the-future/notification:stage-ecall
+    environment:
+      GUARDIAN_EWS_URL: ws://guardian:8765/ws
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+    depends_on:
+      - guardian
+
   child-presence-sim:
     build:
       context: .
@@ -66,6 +79,11 @@ services:
       - guardian
       - zenohd
 
+  # NOTE: disable this service (comment it out / don't include its profile)
+  # when az3166-serial-bridge is active - both publish to the same
+  # CabinTemperatureEvent topic (vss_cabin_temperature_uri) and will fight
+  # over the value Guardian reacts to. Same accepted tradeoff as the
+  # existing threadx-temp-sensor SOME/IP path below.
   temperature-sim:
     build:
       context: .
@@ -339,6 +357,76 @@ services:
       GZ_VERBOSITY: "2"
     profiles:
       - gazebo
+
+  # ── Stage D: real S32K148 OpenBSW ECU bridge (DoIP/UDS → uProtocol) ────────
+  #
+  # Reads the WindowPosition UDS data identifier (DID 0xCF20) from a real
+  # NXP S32K148EVB-Q176 over DoIP and republishes it as a uProtocol event,
+  # so the Guardian dashboard can show the real actuation target value
+  # alongside the simulated one from window_controller_sim.
+  #
+  # IMPORTANT: this needs direct L2/L3 access to the automotive Ethernet
+  # segment the board lives on - `network_mode: host` only actually grants
+  # that on a Linux Docker host. On Windows/macOS (Docker Desktop), host
+  # networking does not reach a physical adapter the way it does on Linux -
+  # run this binary natively there instead (`cargo run --bin
+  # s32k148_doip_bridge`), pointing ZENOH_CONNECT at wherever zenohd is
+  # reachable (it does not need to be the same machine as the hardware).
+  s32k148-doip-bridge:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: s32k148_doip_bridge
+    image: hack-to-the-future/s32k148-doip-bridge:stage-d
+    network_mode: host
+    environment:
+      S32K148_IP: "192.168.0.200"
+      S32K148_DOIP_PORT: "13400"
+      S32K148_UDS_ADDRESS: "0x002A"
+      S32K148_TESTER_ADDRESS: "0x0E00"
+      S32K148_WINDOW_DID: "0xCF20"
+      POLL_INTERVAL_S: "2"
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/127.0.0.1:7447
+    profiles:
+      - s32k148
+
+  # ── Stage E: real AZ3166 (Eclipse ThreadX) sensor bridge (UART → uProtocol) ─
+  # Assisted-by: Anthropic Claude (Sonnet 5)
+  #
+  # Reads LSM6DSL accelerometer + die-temperature readings from a real
+  # MXChip AZ3166 over its ST-Link virtual COM port (same USB cable used to
+  # flash it) and republishes the temperature onto the EXISTING
+  # CabinTemperatureEvent topic - a true drop-in real sensor that Guardian's
+  # state machine reacts to without any guardian.rs change - plus a richer
+  # IMU reading on a new dashboard-only topic.
+  #
+  # IMPORTANT: a USB serial device needs the SAME kind of direct host
+  # access as the automotive-Ethernet adapter and the S32K148 CDA. Docker
+  # Desktop on Windows/macOS cannot grant a container access to a host COM
+  # port (WSL2/Hyper-V isolation) - the `devices:` mapping below only
+  # actually works on a real Linux host (e.g. the Raspberry Pi). On
+  # Windows/macOS, run this binary natively instead:
+  #   cargo run --bin az3166_serial_bridge
+  # with AZ3166_SERIAL_PORT=COM<n> (check Device Manager once plugged in)
+  # and ZENOH_CONNECT pointed at wherever zenohd is reachable.
+  az3166-serial-bridge:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: az3166_serial_bridge
+    image: hack-to-the-future/az3166-serial-bridge:stage-e
+    devices:
+      - "/dev/ttyACM0:/dev/ttyACM0"   # confirm exact node via `dmesg`/`ls /dev/ttyACM*` once plugged into the host
+    environment:
+      AZ3166_SERIAL_PORT: "/dev/ttyACM0"
+      AZ3166_BAUD_RATE: "115200"
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/127.0.0.1:7447
+    profiles:
+      - az3166
 
 networks:
   default:
