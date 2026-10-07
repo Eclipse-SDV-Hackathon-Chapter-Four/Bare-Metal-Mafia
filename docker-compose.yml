@@ -79,11 +79,11 @@ services:
         BIN_NAME: temperature_sim
     image: hack-to-the-future/temperature-sim:stage-a
     environment:
-      HEAT_GAIN_PER_STEP: "0.18"
+      HEAT_GAIN_PER_STEP: "0.50"
       ALARM_HEAT_PER_STEP: "0.02"
-      COOLING_PER_STEP_FULL_WINDOW: "1.20"
+      COOLING_PER_STEP_FULL_WINDOW: "6.00"
       HVAC_COOLING_PER_STEP_FULL_POWER: "2.75"
-      PUBLISH_INTERVAL_S: "2"
+      PUBLISH_INTERVAL_S: "1"
       RUST_LOG: info
       ZENOH_CONNECT: tcp/zenohd:7447
     depends_on:

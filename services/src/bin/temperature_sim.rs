@@ -3,8 +3,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
 use guardian_sil::{
     decode_json_payload, make_uri_provider, open_up_transport, publish_json_event,
-    hvac_state_uri, vss_cabin_temperature_uri, vss_window_state_uri, CabinTemperatureEvent,
-    HvacStateEvent, SensorStatus, WindowStateEvent,
+    hvac_state_uri, uds_hvac_cmd_uri, vss_cabin_temperature_uri, vss_window_state_uri,
+    CabinTemperatureEvent, HvacCommand, HvacStateEvent, SensorStatus, WindowStateEvent,
 };
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -43,6 +43,37 @@ impl Default for HvacSnapshot {
             air_conditioning_active: false,
             fan_speed_percent: 0,
             fault_active: false,
+        }
+    }
+}
+
+impl HvacSnapshot {
+    fn apply_command(&mut self, command: HvacCommand) {
+        self.target_temperature_celsius = command.target_temperature_celsius;
+        self.air_conditioning_active = command.air_conditioning_active;
+        self.fan_speed_percent = command.fan_speed_percent.min(100);
+    }
+}
+
+struct HvacCommandListener {
+    hvac_state: Arc<Mutex<HvacSnapshot>>,
+}
+
+#[async_trait]
+impl UListener for HvacCommandListener {
+    async fn on_receive(&self, message: UMessage) {
+        match decode_json_payload::<HvacCommand>(&message) {
+            Ok(command) => {
+                let mut guard = self.hvac_state.lock().await;
+                guard.apply_command(command.clone());
+                info!(
+                    "HVAC command applied target={}C active={} fan={}%",
+                    command.target_temperature_celsius,
+                    command.air_conditioning_active,
+                    command.fan_speed_percent.min(100)
+                );
+            }
+            Err(err) => warn!("failed to decode HVAC command: {}", err),
         }
     }
 }
@@ -112,30 +143,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .await?;
 
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    transport
+        .register_listener(
+            &uds_hvac_cmd_uri(),
+            None,
+            Arc::new(HvacCommandListener {
+                hvac_state: hvac_state.clone(),
+            }),
+        )
+        .await?;
 
-    let stages = vec![26.0_f32, 36.0_f32, 43.0_f32];
-    for temperature in stages {
-        let event_1 = CabinTemperatureEvent {
-            temperature_celsius: temperature,
-            timestamp_ms: now_ms(),
-            sensor_status: SensorStatus::Ok,
-            sensor_id: 0,
-        };
-        let event_2 = CabinTemperatureEvent {
-            temperature_celsius: temperature,
-            timestamp_ms: now_ms(),
-            sensor_status: SensorStatus::Ok,
-            sensor_id: 1,
-        };
-
-        publish_with_retry(transport.clone(), &event_1).await?;
-        publish_with_retry(transport.clone(), &event_2).await?;
-        info!("published temperature: {:.1}C", temperature);
-        tokio::time::sleep(Duration::from_secs(4)).await;
-    }
-
-    let mut temperature_celsius = 43.0_f32;
+    let mut temperature_celsius = 26.0_f32;
     let ambient_celsius = 24.0_f32;
 
     loop {
@@ -195,6 +213,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         tokio::time::sleep(Duration::from_secs(publish_interval_s)).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hvac_command_activates_simulated_cooling() {
+        let mut state = HvacSnapshot::default();
+        state.apply_command(HvacCommand {
+            request_id: "test-request".to_string(),
+            target_temperature_celsius: 18,
+            air_conditioning_active: true,
+            fan_speed_percent: 120,
+        });
+
+        assert!(state.air_conditioning_active);
+        assert_eq!(state.target_temperature_celsius, 18);
+        assert_eq!(state.fan_speed_percent, 100);
+        assert!(!state.fault_active);
     }
 }
 
