@@ -67,6 +67,7 @@ struct EwsWarn {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "PascalCase")]
 enum EwsReason {
+    Reset,
     Heat,
 }
 
@@ -467,6 +468,7 @@ async fn handle_ews_socket(mut socket: WebSocket, app: AppState, ews_warn: Arc<A
 fn handle_ews_warning(warning: EwsWarn, ews_warn: Arc<AtomicBool>) {
     info!("WARNING RECEIVED");
     match warning.reason {
+        EwsReason::Reset => ews_warn.store(false, Ordering::Relaxed),
         EwsReason::Heat => ews_warn.store(true, Ordering::Relaxed),
     }
 }

@@ -122,7 +122,8 @@ struct EWSWarn {
 }
 
 enum Reason {
-    Heat = 0,
+    Reset = 0,
+    Heat = 1,
 }
 ```
 
