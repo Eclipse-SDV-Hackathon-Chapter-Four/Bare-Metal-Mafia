@@ -13,6 +13,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 # Assisted-by: Anthropic Claude Opus 5.5 (claude-opus-5-5)
+# Assisted-by: Anthropic Claude Fable 5.1 (claude-fable-5-1)
 
 """Start the Gazebo Fortress cabin world and the ROS 2 <-> Gazebo bridge.
 
@@ -20,9 +21,12 @@
 
 1. Reads config/window.yaml and writes travel_m into the window joint limit
    of worlds/cabin.sdf (rendered to /tmp/gazebo_sim/cabin.sdf).
-2. Starts `ign gazebo -s -r` (server only, headless) or, with gui:=true,
-   `ign gazebo -r --gui-config config/gui.config` (server and GUI client in
-   one process; closing the GUI window therefore stops the container).
+2. Starts the Gazebo server `ign gazebo -s -r` and, with gui:=true, the GUI
+   client `ign gazebo -g --gui-config config/gui.config` as a second process.
+   Server and GUI are deliberately not started as one `ign gazebo -r`: that
+   lets the ign Ruby wrapper fork both from one already multi-threaded
+   process, and the forked server intermittently hung before loading the
+   world. Closing the GUI window still stops the container.
 3. Starts ros_gz_bridge's parameter_bridge with config/bridge.yaml.
 
 If either process exits, the whole launch shuts down so the container stops
@@ -74,15 +78,8 @@ def _launch_setup(context):
     verbosity = LaunchConfiguration('verbosity').perform(context)
 
     world = _render_world(share)
-    gz_cmd = ['ign', 'gazebo', '-r', '-v', verbosity]
-    if gui:
-        # Start camera aimed at the rear-left door and seat (config/gui.config).
-        gz_cmd += ['--gui-config', os.path.join(share, 'config', 'gui.config')]
-    else:
-        gz_cmd.insert(2, '-s')
-    gz_cmd.append(world)
-
-    gazebo = ExecuteProcess(cmd=gz_cmd, name='gazebo', output='screen')
+    gazebo = ExecuteProcess(cmd=['ign', 'gazebo', '-s', '-r', '-v', verbosity, world],
+                            name='gazebo', output='screen')
     bridge = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
@@ -91,14 +88,22 @@ def _launch_setup(context):
         parameters=[{'config_file': os.path.join(share, 'config', 'bridge.yaml')}],
     )
 
+    processes = [(gazebo, 'gazebo'), (bridge, 'gz_bridge')]
+    if gui:
+        # Start camera aimed at the rear-left door and seat (config/gui.config).
+        processes.append((ExecuteProcess(
+            cmd=['ign', 'gazebo', '-g', '-v', verbosity,
+                 '--gui-config', os.path.join(share, 'config', 'gui.config')],
+            name='gazebo_gui', output='screen'), 'gazebo_gui'))
+
     shutdown_on_exit = [
         RegisterEventHandler(OnProcessExit(
             target_action=action,
             on_exit=[EmitEvent(event=Shutdown(reason=f'{name} exited'))],
         ))
-        for action, name in ((gazebo, 'gazebo'), (bridge, 'gz_bridge'))
+        for action, name in processes
     ]
-    return [gazebo, bridge, *shutdown_on_exit]
+    return [action for action, _ in processes] + shutdown_on_exit
 
 
 def generate_launch_description():

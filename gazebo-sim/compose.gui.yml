@@ -19,8 +19,8 @@
 #   xhost +local:
 #   docker compose -f docker-compose.yml -f gazebo-sim/compose.gui.yml --profile gazebo up --build
 #
-# With GZ_GUI=true the launch file runs `ign gazebo -r` (server and GUI in one
-# process) instead of the headless `ign gazebo -s -r`. /dev/dri gives the GUI
+# With GZ_GUI=true the launch file starts the GUI client `ign gazebo -g` next
+# to the headless server `ign gazebo -s -r`. /dev/dri gives the GUI
 # GPU acceleration; without a usable GPU set LIBGL_ALWAYS_SOFTWARE=1 on the
 # host before `up`. macOS and Windows: headless only, do not use this file.
 services:

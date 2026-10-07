@@ -14,6 +14,7 @@
 
   SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
   Assisted-by: Anthropic Claude Opus 5.5 (claude-opus-5-5)
+  Assisted-by: Anthropic Claude Fable 5.1 (claude-fable-5-1)
 -->
 
 # gazebo-sim — optional Gazebo simulation backend
@@ -70,14 +71,17 @@ docker compose -f docker-compose.yml -f gazebo-sim/compose.gui.yml --profile gaz
 
 `compose.gui.yml` sets `GZ_GUI=true`, forwards `DISPLAY` and
 `/tmp/.X11-unix`, and passes `/dev/dri` for GPU acceleration. With
-`GZ_GUI=true` the launch file runs `ign gazebo -r` (server **and** GUI in one
-process; `ign gazebo -g` alone would only start a client with no server)
-with [`config/gui.config`](config/gui.config): the camera starts outside the
+`GZ_GUI=true` the launch file starts the GUI client `ign gazebo -g` as a
+second process next to the server `ign gazebo -s -r`, so server and GUI run
+together. (Not as one `ign gazebo -r <world>`: there the ign Ruby wrapper
+forks both from one multi-threaded process, and the forked server
+intermittently hung before loading the world.) The GUI uses
+[`config/gui.config`](config/gui.config): the camera starts outside the
 car, above the rear-left door, so you see the window face-on and look into
 the cabin from above (the cabin has no roof visual for that reason). Orbit
 with the mouse; the camera button (or service `/gui/screenshot`) saves a PNG
 inside the container. Closing the GUI window stops the simulation and the
-container, because both run in one process.
+container (the launch file shuts everything down when one process exits).
 
 Then run the guided demo ([Demo](#demo)) and watch it in that window.
 
