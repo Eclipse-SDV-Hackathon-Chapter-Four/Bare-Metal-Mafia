@@ -221,6 +221,50 @@ The full walkthrough is in [docs/Tutorial.md](docs/Tutorial.md).
 - [ ] At least one physical embedded endpoint (AZ3166 with ThreadX)
 - [ ] Identical service artifacts before and after the configuration change
 
+## AI Usage
+
+We follow the Eclipse Foundation's
+[Generative Artificial Intelligence Usage Guidelines for Eclipse Committers](https://www.eclipse.org/projects/guidelines/genai)
+(version 1.0, April 2024). In short, the guidelines ask us to be transparent
+about the generative AI platforms we used, to verify the accuracy of
+generated output through our normal vetting (testing, intellectual property
+due diligence, security), and to respect intellectual property and the
+platform's terms of use. They suggest disclosing AI use in a comment just
+below the copyright and licence header.
+
+**Tools used**
+
+| Tool | Used for |
+|---|---|
+| Claude Code with Anthropic Claude Opus 5.5 (`claude-opus-5-5`) | `gazebo-sim/` (Gazebo simulation backend): code, configuration, tests and their documentation, plus the related additions to `docker-compose.yml` (the `gazebo-sim` service), to this README and [NOTICE.md](NOTICE.md) |
+
+**How we mark it.** These are our project conventions on top of the
+guidelines, not requirements of the guidelines themselves:
+
+- Files that are largely AI-generated carry a header with the Apache-2.0
+  copyright notice, an *AI Disclosure* paragraph stating that the
+  AI-generated portions are made available under CC0-1.0, the SPDX
+  identifier `Apache-2.0 AND CC0-1.0`, and an `Assisted-by:` line naming the
+  model. See also [NOTICE.md](NOTICE.md).
+- Commits that used AI assistance carry an `Assisted-by:` trailer, e.g.
+  `Assisted-by: Anthropic Claude Opus 5.5 (claude-opus-5-5)`.
+- Files we edited only partly with AI assistance (for example this README or
+  `docker-compose.yml`, which come from the reference stack or from team
+  members) keep their existing headers; the AI-assisted changes are
+  identifiable through the commit trailers.
+
+**Review.** All contributions, AI-assisted or not, are reviewed by a human
+team member before they are merged, and AI-generated code is tested like any
+other code.
+
+**Older commits.** Commits that were pushed before we adopted these
+conventions may have been created with AI assistance but do not carry an
+`Assisted-by:` trailer. We do not rewrite published history to add it.
+
+**AI-generated files without a header.** Files without a comment syntax
+(for example JSON) cannot carry the header and are listed here instead:
+currently none.
+
 ## Pi credentials
 
 - Hostname: pi
