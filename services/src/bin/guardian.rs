@@ -30,6 +30,7 @@ struct AppState {
 struct GuardianRuntime {
     child_present: bool,
     temperature_celsius: f32,
+    known_temperature_sensors: HashSet<u64>,
     sensor_temperatures: HashMap<u64, f32>,
     broken_sensors: HashSet<u64>,
     current_state: GuardianState,
@@ -146,6 +147,7 @@ impl GuardianRuntime {
         Self {
             child_present: false,
             temperature_celsius: 26.0,
+            known_temperature_sensors: HashSet::new(),
             sensor_temperatures: HashMap::new(),
             broken_sensors: HashSet::new(),
             current_state: GuardianState::Clear,
@@ -165,12 +167,23 @@ impl GuardianRuntime {
     }
 
     fn apply_temperature_event(&mut self, event: CabinTemperatureEvent) -> bool {
+        self.known_temperature_sensors.insert(event.sensor_id);
         if self.broken_sensors.contains(&event.sensor_id)
-            || !matches!(
-                event.sensor_status,
-                SensorStatus::Ok | SensorStatus::Degraded
-            )
         {
+            return false;
+        }
+
+        if matches!(event.sensor_status, SensorStatus::Failed) {
+            self.broken_sensors.insert(event.sensor_id);
+            self.sensor_temperatures.remove(&event.sensor_id);
+            warn!("Temperature sensor {} reported failure", event.sensor_id);
+            if self.all_temperature_sensors_broken() {
+                return self.recompute_and_log();
+            }
+            return false;
+        }
+
+        if !matches!(event.sensor_status, SensorStatus::Ok | SensorStatus::Degraded) {
             return false;
         }
 
@@ -199,7 +212,7 @@ impl GuardianRuntime {
                 );
             }
             if self.sensor_temperatures.is_empty() {
-                return false;
+                return self.recompute_and_log();
             }
 
             self.temperature_celsius = self.sensor_temperatures.values().sum::<f32>()
@@ -214,7 +227,25 @@ impl GuardianRuntime {
         self.recompute_and_log()
     }
 
+    fn all_temperature_sensors_broken(&self) -> bool {
+        !self.known_temperature_sensors.is_empty()
+            && self
+                .known_temperature_sensors
+                .iter()
+                .all(|sensor_id| self.broken_sensors.contains(sensor_id))
+    }
+
     fn recompute_and_log(&mut self) -> bool {
+        if self.all_temperature_sensors_broken() {
+            self.current_state = GuardianState::Critical;
+            info!(
+                "All {} observed temperature sensors are broken -> {:?}",
+                self.known_temperature_sensors.len(),
+                self.current_state
+            );
+            return !self.mitigation_pending && !self.window_stage_requested;
+        }
+
         let base = evaluate_state(self.child_present, self.temperature_celsius);
         let mut trigger_mitigation = false;
 
@@ -440,6 +471,20 @@ async fn request_mitigation(app: &AppState, rpc_client: Arc<InMemoryRpcClient>) 
 }
 
 fn build_mitigation_request(guard: &GuardianRuntime) -> MitigationRequest {
+    if guard.all_temperature_sensors_broken() {
+        return MitigationRequest {
+            request_id: uuid::Uuid::new_v4().to_string(),
+            hvac_target_temperature_celsius: 18,
+            hvac_fan_speed_percent: 100,
+            hvac_power_enabled: !guard.hvac_fault_active,
+            window_percentage: 25,
+            fan_enabled: true,
+            alarm_enabled: true,
+            reason: "TEMPERATURE_SENSOR_FAILURE_ALL".to_string(),
+            timestamp_ms: now_ms(),
+        };
+    }
+
     let escalate_to_window = guard.hvac_fault_active || guard.should_escalate_to_window();
 
     if escalate_to_window {
@@ -518,11 +563,13 @@ mod tests {
     fn divergent_sensors_are_both_marked_broken_and_ignored() {
         let mut runtime = GuardianRuntime::new();
         runtime.apply_temperature_event(temperature_event(1, 30.0));
-        runtime.apply_temperature_event(temperature_event(2, 36.0));
+        let trigger_mitigation = runtime.apply_temperature_event(temperature_event(2, 36.0));
 
         assert!(runtime.broken_sensors.contains(&1));
         assert!(runtime.broken_sensors.contains(&2));
         assert!(runtime.sensor_temperatures.is_empty());
+        assert_eq!(runtime.current_state, GuardianState::Critical);
+        assert!(trigger_mitigation);
 
         runtime.apply_temperature_event(temperature_event(1, 31.0));
         assert!(runtime.sensor_temperatures.is_empty());
@@ -540,5 +587,58 @@ mod tests {
         assert!(!runtime.broken_sensors.contains(&2));
         assert_eq!(runtime.sensor_temperatures.get(&2), Some(&33.0));
         assert_eq!(runtime.temperature_celsius, 33.0);
+    }
+
+    #[test]
+    fn guardian_is_critical_when_all_observed_sensors_fail() {
+        let mut runtime = GuardianRuntime::new();
+        assert_ne!(runtime.current_state, GuardianState::Critical);
+
+        runtime.apply_temperature_event(CabinTemperatureEvent {
+            temperature_celsius: 30.0,
+            timestamp_ms: 0,
+            sensor_status: SensorStatus::Ok,
+            sensor_id: 1,
+        });
+        runtime.apply_temperature_event(CabinTemperatureEvent {
+            temperature_celsius: 30.0,
+            timestamp_ms: 0,
+            sensor_status: SensorStatus::Ok,
+            sensor_id: 2,
+        });
+
+        let first_failure_triggered = runtime.apply_temperature_event(CabinTemperatureEvent {
+            temperature_celsius: 30.0,
+            timestamp_ms: 0,
+            sensor_status: SensorStatus::Failed,
+            sensor_id: 1,
+        });
+        assert!(!first_failure_triggered);
+
+        let final_failure_triggered = runtime.apply_temperature_event(CabinTemperatureEvent {
+            temperature_celsius: 30.0,
+            timestamp_ms: 0,
+            sensor_status: SensorStatus::Failed,
+            sensor_id: 2,
+        });
+
+        assert_eq!(runtime.current_state, GuardianState::Critical);
+        assert!(runtime.all_temperature_sensors_broken());
+        assert!(final_failure_triggered);
+
+        let mitigation = build_mitigation_request(&runtime);
+        assert_eq!(mitigation.window_percentage, 25);
+        assert!(mitigation.alarm_enabled);
+        assert_eq!(mitigation.reason, "TEMPERATURE_SENSOR_FAILURE_ALL");
+
+        runtime.mark_mitigation_requested();
+        runtime.mark_mitigation_success(&mitigation);
+        assert!(!runtime.apply_hvac_state_event(HvacStateEvent {
+            target_temperature_celsius: 18,
+            air_conditioning_active: true,
+            fan_speed_percent: 100,
+            fault_active: false,
+            timestamp_ms: 1,
+        }));
     }
 }
