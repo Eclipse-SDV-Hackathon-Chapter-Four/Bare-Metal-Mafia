@@ -29,6 +29,7 @@ services:
       ZENOH_CONNECT: tcp/zenohd:7447
     ports:
       - "8080:8080"
+      - "8765:8765"
     depends_on:
       - actuation-adapter
       - zenohd
@@ -51,6 +52,18 @@ services:
       - "8094:8094"
     depends_on:
       - zenohd
+
+  notification:
+    build:
+      context: ./notification
+      dockerfile: Containerfile
+    image: hack-to-the-future/notification:stage-ecall
+    environment:
+      GUARDIAN_EWS_URL: ws://guardian:8765/ws
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+    depends_on:
+      - guardian
 
   child-presence-sim:
     build:
