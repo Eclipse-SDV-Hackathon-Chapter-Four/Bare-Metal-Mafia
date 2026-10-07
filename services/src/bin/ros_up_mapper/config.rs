@@ -143,24 +143,101 @@ pub enum RouteCfg {
         #[serde(default)]
         repeat_last_ms: Option<u64>,
     },
+    /// Keeps a state object fed by several inputs and publishes it as one
+    /// event (on start, on trigger inputs, on relevant changes), rate
+    /// limited and coalesced. Optionally served over HTTP.
+    State {
+        name: String,
+        inputs: Vec<StateInputCfg>,
+        #[serde(default)]
+        initial: BTreeMap<String, serde_json::Value>,
+        #[serde(default)]
+        publish: StatePublishCfg,
+        to: EndpointCfg,
+        fields: BTreeMap<String, FieldSpec>,
+        #[serde(default)]
+        http: Option<StateHttpCfg>,
+    },
+    /// Turns an "activity" stream (messages only while something is
+    /// detected, e.g. Gazebo contacts) into a debounced boolean `present`,
+    /// published on change plus a heartbeat.
+    Presence {
+        name: String,
+        from: EndpointCfg,
+        silence_ms: u64,
+        debounce_ms: u64,
+        heartbeat_ms: u64,
+        to: EndpointCfg,
+        fields: BTreeMap<String, FieldSpec>,
+    },
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StateInputCfg {
+    pub name: String,
+    pub from: EndpointCfg,
+    /// State fields updated from this input (FieldSpecs see the input).
+    #[serde(default)]
+    pub set: BTreeMap<String, FieldSpec>,
+    /// Publish the current state whenever this input arrives.
+    #[serde(default)]
+    pub publish: bool,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StatePublishCfg {
+    #[serde(default)]
+    pub on_start: bool,
+    /// Publish when one of these state fields differs from the last
+    /// published value (numbers: by at least `min_delta`).
+    #[serde(default)]
+    pub on_change: BTreeMap<String, ChangeCfg>,
+    /// Upper bound on the publish rate; a change held back by it is
+    /// published as soon as allowed, so the final value always goes out.
+    #[serde(default)]
+    pub max_rate_hz: Option<f64>,
+    /// Wait this long after the first trigger so a burst becomes one event.
+    #[serde(default)]
+    pub coalesce_ms: u64,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChangeCfg {
+    #[serde(default)]
+    pub min_delta: Option<f64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StateHttpCfg {
+    pub path: String,
+    pub fields: Vec<String>,
 }
 
 impl RouteCfg {
     pub fn name(&self) -> &str {
         match self {
-            RouteCfg::Forward { name, .. } => name,
+            RouteCfg::Forward { name, .. }
+            | RouteCfg::State { name, .. }
+            | RouteCfg::Presence { name, .. } => name,
         }
     }
 
     pub fn outputs(&self) -> Vec<&EndpointCfg> {
         match self {
-            RouteCfg::Forward { to, .. } => vec![to],
+            RouteCfg::Forward { to, .. }
+            | RouteCfg::State { to, .. }
+            | RouteCfg::Presence { to, .. } => vec![to],
         }
     }
 
     pub fn inputs(&self) -> Vec<&EndpointCfg> {
         match self {
-            RouteCfg::Forward { from, .. } => vec![from],
+            RouteCfg::Forward { from, .. } | RouteCfg::Presence { from, .. } => vec![from],
+            RouteCfg::State { inputs, .. } => inputs.iter().map(|i| &i.from).collect(),
         }
     }
 }
@@ -193,7 +270,10 @@ fn load_constants(raw: &Yaml) -> Result<BTreeMap<String, Yaml>, ConfigError> {
         return Ok(out);
     };
     for (name, source) in sources {
-        let name = name.as_str().ok_or("constant names must be strings")?.to_string();
+        let name = name
+            .as_str()
+            .ok_or("constant names must be strings")?
+            .to_string();
         let source: ConstantSource = serde_yaml::from_value(source.clone())?;
         let text = std::fs::read_to_string(&source.file)
             .map_err(|e| format!("constant {name}: cannot read {}: {e}", source.file))?;
@@ -277,13 +357,24 @@ fn validate(cfg: &MappingFile) -> Result<(), ConfigError> {
     if cfg.version != 1 {
         return Err(format!("unsupported mapping version {}", cfg.version).into());
     }
-    let link_dir = |name: &str| cfg.links.iter().find(|l| l.name == name).map(|l| l.direction);
+    let link_dir = |name: &str| {
+        cfg.links
+            .iter()
+            .find(|l| l.name == name)
+            .map(|l| l.direction)
+    };
     let mut names = std::collections::BTreeSet::new();
     for route in &cfg.routes {
         if !names.insert(route.name()) {
             return Err(format!("duplicate route name {}", route.name()).into());
         }
-        if let RouteCfg::Forward { repeat_last_ms: Some(_), to, name, .. } = route {
+        if let RouteCfg::Forward {
+            repeat_last_ms: Some(_),
+            to,
+            name,
+            ..
+        } = route
+        {
             if !matches!(to, EndpointCfg::Link(_)) {
                 return Err(format!(
                     "route {name}: repeat_last_ms is only allowed for link outputs (a repeated uProtocol event would be a duplicate)"
@@ -294,7 +385,11 @@ fn validate(cfg: &MappingFile) -> Result<(), ConfigError> {
         for input in route.inputs() {
             if let EndpointCfg::Link(l) = input {
                 if link_dir(l) != Some(LinkDirection::FromRos) {
-                    return Err(format!("route {}: input link {l} must exist with direction from_ros", route.name()).into());
+                    return Err(format!(
+                        "route {}: input link {l} must exist with direction from_ros",
+                        route.name()
+                    )
+                    .into());
                 }
             }
             if let EndpointCfg::Uprotocol(u) = input {
@@ -305,7 +400,11 @@ fn validate(cfg: &MappingFile) -> Result<(), ConfigError> {
             match output {
                 EndpointCfg::Link(l) => {
                     if link_dir(l) != Some(LinkDirection::ToRos) {
-                        return Err(format!("route {}: output link {l} must exist with direction to_ros", route.name()).into());
+                        return Err(format!(
+                            "route {}: output link {l} must exist with direction to_ros",
+                            route.name()
+                        )
+                        .into());
                     }
                 }
                 EndpointCfg::Uprotocol(u) => {
@@ -345,10 +444,13 @@ pub fn resolve_uri(uri: &UriRef) -> Result<UUri, ConfigError> {
             "uds_hvac_cmd" => g::uds_hvac_cmd_uri(),
             other => return Err(format!("unknown uProtocol URI name {other}").into()),
         }),
-        UriRef::Parts { authority, ue_id, version, resource } => {
-            UUri::try_from_parts(authority, *ue_id, *version, *resource)
-                .map_err(|e| format!("invalid uProtocol URI parts: {e}").into())
-        }
+        UriRef::Parts {
+            authority,
+            ue_id,
+            version,
+            resource,
+        } => UUri::try_from_parts(authority, *ue_id, *version, *resource)
+            .map_err(|e| format!("invalid uProtocol URI parts: {e}").into()),
     }
 }
 
@@ -380,17 +482,25 @@ mod tests {
         let window = write_tmp("w1.yaml", "w: {travel_m: 0.4, joint_name: j}\n");
         let path = write_tmp("m1.yaml", &mapping(&window, "mirror", "{link: cmd}"));
         let cfg = load(&path).unwrap();
-        let RouteCfg::Forward { fields, .. } = &cfg.routes[0];
+        let RouteCfg::Forward { fields, .. } = &cfg.routes[0] else {
+            panic!("forward")
+        };
         assert!(matches!(fields["data"].ops[0], crate::transform::Op::Mul(x) if x == 0.4));
     }
 
     #[test]
     fn mirror_must_not_publish_on_uprotocol() {
         let window = write_tmp("w2.yaml", "w: {travel_m: 0.4}\n");
-        let path = write_tmp("m2.yaml", &mapping(&window, "mirror", "{uprotocol: vss_window_state}"));
+        let path = write_tmp(
+            "m2.yaml",
+            &mapping(&window, "mirror", "{uprotocol: vss_window_state}"),
+        );
         let err = load(&path).unwrap_err().to_string();
         assert!(err.contains("mirror must not publish"), "{err}");
-        let path = write_tmp("m3.yaml", &mapping(&window, "replace", "{uprotocol: vss_window_state}"));
+        let path = write_tmp(
+            "m3.yaml",
+            &mapping(&window, "replace", "{uprotocol: vss_window_state}"),
+        );
         assert!(load(&path).is_ok());
     }
 
@@ -398,7 +508,10 @@ mod tests {
     fn unknown_constant_is_an_error() {
         let window = write_tmp("w4.yaml", "w: {other: 1}\n");
         let path = write_tmp("m4.yaml", &mapping(&window, "mirror", "{link: cmd}"));
-        assert!(load(&path).unwrap_err().to_string().contains("unknown constant"));
+        assert!(load(&path)
+            .unwrap_err()
+            .to_string()
+            .contains("unknown constant"));
     }
 }
 
@@ -422,6 +535,76 @@ mod repeat_tests {
         std::fs::write(&path, text("{link: cmd}")).unwrap();
         assert!(load(&path).is_ok());
         std::fs::write(&path, text("{uprotocol: vss_window_state}")).unwrap();
-        assert!(load(&path).unwrap_err().to_string().contains("repeat_last_ms"));
+        assert!(load(&path)
+            .unwrap_err()
+            .to_string()
+            .contains("repeat_last_ms"));
+    }
+}
+
+#[cfg(test)]
+mod shipped_mappings {
+    use super::*;
+
+    /// Load a mapping from ros-up-bridge/config with the container path of
+    /// window.yaml pointed at the repository copy.
+    fn load_shipped(name: &str) -> MappingFile {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let text = std::fs::read_to_string(root.join("ros-up-bridge/config").join(name)).unwrap();
+        let window = root.join("gazebo-sim/config/window.yaml");
+        let text = text.replace(
+            "/opt/gazebo_sim/config/window.yaml",
+            window.to_str().unwrap(),
+        );
+        let dir =
+            std::env::temp_dir().join(format!("ros_up_mapper_shipped_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(name);
+        std::fs::write(&path, text).unwrap();
+        load(&path).unwrap()
+    }
+
+    #[test]
+    fn mirror_yaml_loads_and_publishes_nothing_on_uprotocol() {
+        let cfg = load_shipped("mirror.yaml");
+        assert_eq!(cfg.mode, Mode::Mirror);
+        assert!(cfg.routes.iter().all(|r| r
+            .outputs()
+            .iter()
+            .all(|o| matches!(o, EndpointCfg::Link(_)))));
+    }
+
+    #[test]
+    fn replace_yaml_loads_with_expected_outputs() {
+        let cfg = load_shipped("replace.yaml");
+        assert_eq!(cfg.mode, Mode::Replace);
+        let ups: Vec<String> = cfg
+            .routes
+            .iter()
+            .flat_map(|r| r.outputs())
+            .filter_map(|o| match o {
+                EndpointCfg::Uprotocol(UriRef::Named(n)) => Some(n.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(ups, vec!["vss_window_state", "vss_child_presence"]);
+    }
+
+    #[test]
+    fn replace_window_state_maps_joint_position_to_percent() {
+        use crate::transform::Context;
+        let cfg = load_shipped("replace.yaml");
+        let Some(RouteCfg::State { inputs, .. }) =
+            cfg.routes.iter().find(|r| r.name() == "window_state")
+        else {
+            panic!("window_state route")
+        };
+        let joint = serde_json::json!({"name": ["window_row2_left_joint"], "position": [0.0987]});
+        let ctx = Context {
+            input: Some(&joint),
+            ..Default::default()
+        };
+        let pct = inputs[0].set["window_percentage"].eval(&ctx).unwrap();
+        assert_eq!(pct, serde_json::json!(25));
     }
 }

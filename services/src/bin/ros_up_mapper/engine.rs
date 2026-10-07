@@ -32,6 +32,8 @@ use tracing::{debug, info, warn};
 use up_rust::{UListener, UMessage, UTransport, UUri};
 
 use crate::config::{resolve_uri, ConfigError, EndpointCfg, MappingFile, RouteCfg};
+use crate::guard::Guard;
+use crate::routes::{run_presence, run_state, SharedState};
 use crate::transform::{map_fields, Context};
 
 #[derive(Default)]
@@ -93,26 +95,39 @@ impl Endpoint {
 
 pub struct RouteInput {
     /// Index into the route's inputs (used by routes with several inputs).
-    #[allow(dead_code)]
     pub input: usize,
     pub value: Value,
 }
 
-/// Shared transports and counters.
+/// Shared transports, counters and the single-publisher guard.
 pub struct Io {
     pub transport: Arc<dyn UTransport>,
     pub zenoh: zenoh::Session,
     pub stats: Arc<Stats>,
+    pub guard: Arc<Guard>,
+}
+
+/// A state route served over HTTP: path, exposed fields, live state.
+pub struct HttpState {
+    pub path: String,
+    pub fields: Vec<String>,
+    pub state: SharedState,
 }
 
 impl Io {
     pub async fn send(&self, endpoint: &Endpoint, value: &Value) -> Result<(), String> {
         match endpoint {
             Endpoint::Up(uri) => {
+                // publish_json_event serialises the same Value to the same
+                // bytes, so the guard can recognise our own message later.
+                self.guard
+                    .remember(&serde_json::to_vec(value).map_err(|e| e.to_string())?);
                 publish_json_event(self.transport.clone(), uri.clone(), value)
                     .await
                     .map_err(|e| format!("uProtocol publish failed: {e}"))?;
-                self.stats.uprotocol_published.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .uprotocol_published
+                    .fetch_add(1, Ordering::Relaxed);
             }
             Endpoint::Link(key) => {
                 let bytes = serde_json::to_vec(value).map_err(|e| e.to_string())?;
@@ -169,7 +184,10 @@ impl UListener for UpInput {
     async fn on_receive(&self, message: UMessage) {
         match decode_json_payload::<Value>(&message) {
             Ok(value) => {
-                let _ = self.tx.send(RouteInput { input: self.input, value });
+                let _ = self.tx.send(RouteInput {
+                    input: self.input,
+                    value,
+                });
             }
             Err(err) => warn!("invalid uProtocol JSON payload: {err}"),
         }
@@ -181,23 +199,61 @@ pub async fn start(
     cfg: &MappingFile,
     transport: Arc<dyn UTransport>,
     zenoh: zenoh::Session,
-) -> Result<(Arc<Io>, Arc<Stats>), ConfigError> {
+    guard: Arc<Guard>,
+) -> Result<(Arc<Io>, Vec<HttpState>), ConfigError> {
     let mut stats = Stats::default();
     for route in &cfg.routes {
-        stats.routes.insert(route.name().to_string(), Arc::new(RouteStats::default()));
+        stats
+            .routes
+            .insert(route.name().to_string(), Arc::new(RouteStats::default()));
     }
     let stats = Arc::new(stats);
-    let io = Arc::new(Io { transport, zenoh, stats: stats.clone() });
+    let io = Arc::new(Io {
+        transport,
+        zenoh,
+        stats: stats.clone(),
+        guard: guard.clone(),
+    });
     let prefix = cfg.zenoh.key_prefix.as_str();
+    let mut http_states = Vec::new();
+
+    // Watch every uProtocol topic this mapper publishes (see guard.rs).
+    let mut watched: Vec<UUri> = Vec::new();
+    for route in &cfg.routes {
+        for output in route.outputs() {
+            if let Endpoint::Up(uri) = Endpoint::resolve(output, prefix)? {
+                if !watched.contains(&uri) {
+                    let label = format!("route {}", route.name());
+                    io.transport
+                        .register_listener(&uri, None, guard.watcher(uri.clone(), label))
+                        .await
+                        .map_err(|e| format!("register_listener failed: {e}"))?;
+                    info!(
+                        "single-publisher guard on {} (strict: {})",
+                        uri.to_uri(false),
+                        guard.strict()
+                    );
+                    watched.push(uri);
+                }
+            }
+        }
+    }
 
     for route in &cfg.routes {
         let route_stats = stats.routes[route.name()].clone();
         let (tx, rx) = unbounded_channel();
         for (i, input) in route.inputs().into_iter().enumerate() {
-            io.subscribe(&Endpoint::resolve(input, prefix)?, tx.clone(), i).await?;
+            io.subscribe(&Endpoint::resolve(input, prefix)?, tx.clone(), i)
+                .await?;
         }
         match route {
-            RouteCfg::Forward { name, to, fields, repeat_last_ms, .. } => {
+            RouteCfg::Forward {
+                name,
+                to,
+                fields,
+                repeat_last_ms,
+                ..
+            } => {
                 let to = Endpoint::resolve(to, prefix)?;
                 info!(
                     "route {name} (forward): {:?} -> {:?}, repeat_last_ms {:?}",
@@ -216,9 +272,70 @@ pub async fn start(
                     route_stats,
                 ));
             }
+            RouteCfg::State {
+                name,
+                inputs,
+                initial,
+                publish,
+                to,
+                fields,
+                http,
+            } => {
+                let to = Endpoint::resolve(to, prefix)?;
+                info!(
+                    "route {name} (state): {} input(s) -> {:?}",
+                    inputs.len(),
+                    to
+                );
+                let shared: SharedState = Arc::new(std::sync::Mutex::new(initial.clone()));
+                if let Some(http) = http {
+                    http_states.push(HttpState {
+                        path: http.path.clone(),
+                        fields: http.fields.clone(),
+                        state: shared.clone(),
+                    });
+                }
+                tokio::spawn(run_state(
+                    name.clone(),
+                    rx,
+                    inputs.clone(),
+                    shared,
+                    publish.clone(),
+                    to,
+                    fields.clone(),
+                    io.clone(),
+                    route_stats,
+                ));
+            }
+            RouteCfg::Presence {
+                name,
+                silence_ms,
+                debounce_ms,
+                heartbeat_ms,
+                to,
+                fields,
+                ..
+            } => {
+                let to = Endpoint::resolve(to, prefix)?;
+                info!(
+                    "route {name} (presence): silence {silence_ms} ms, debounce {debounce_ms} ms, heartbeat {heartbeat_ms} ms -> {:?}",
+                    to
+                );
+                tokio::spawn(run_presence(
+                    name.clone(),
+                    rx,
+                    Duration::from_millis(*silence_ms),
+                    Duration::from_millis(*debounce_ms),
+                    Duration::from_millis(*heartbeat_ms),
+                    to,
+                    fields.clone(),
+                    io.clone(),
+                    route_stats,
+                ));
+            }
         }
     }
-    Ok((io, stats))
+    Ok((io, http_states))
 }
 
 async fn run_forward(
@@ -252,7 +369,10 @@ async fn run_forward(
         if let Ok(mut last_input) = stats.last_input.lock() {
             *last_input = Some(msg.value.clone());
         }
-        let ctx = Context { input: Some(&msg.value), ..Default::default() };
+        let ctx = Context {
+            input: Some(&msg.value),
+            ..Default::default()
+        };
         let result = match map_fields(&fields, &ctx) {
             Ok(out) => io.send(&to, &out).await.map(|_| out),
             Err(e) => Err(e),

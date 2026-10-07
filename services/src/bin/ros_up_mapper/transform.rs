@@ -77,7 +77,10 @@ impl TryFrom<OpRepr> for Op {
             OpRepr::Map(map) if map.len() == 1 => map.into_iter().next().unwrap(),
             OpRepr::Map(_) => return Err("an op is one key, e.g. {div: 100}".into()),
         };
-        let num = |v: &Value| v.as_f64().ok_or_else(|| format!("op {name}: expected a number, got {v}"));
+        let num = |v: &Value| {
+            v.as_f64()
+                .ok_or_else(|| format!("op {name}: expected a number, got {v}"))
+        };
         Ok(match name.as_str() {
             "add" => Op::Add(num(&arg)?),
             "sub" => Op::Sub(num(&arg)?),
@@ -115,7 +118,12 @@ pub struct Context<'a> {
 
 impl FieldSpec {
     pub fn eval(&self, ctx: &Context) -> Result<Value, TransformError> {
-        let sources = [self.from.is_some(), self.state.is_some(), self.constant.is_some(), self.now_ms];
+        let sources = [
+            self.from.is_some(),
+            self.state.is_some(),
+            self.constant.is_some(),
+            self.now_ms,
+        ];
         if sources.iter().filter(|s| **s).count() != 1 {
             return Err("field needs exactly one of from / state / const / now_ms".into());
         }
@@ -134,7 +142,9 @@ impl FieldSpec {
         };
 
         if !self.ops.is_empty() {
-            let mut x = value.as_f64().ok_or_else(|| format!("ops need a number, got {value}"))?;
+            let mut x = value
+                .as_f64()
+                .ok_or_else(|| format!("ops need a number, got {value}"))?;
             for op in &self.ops {
                 x = match op {
                     Op::Add(v) => x + v,
@@ -178,7 +188,11 @@ pub fn map_fields(
 }
 
 fn convert(value: Value, t: OutType) -> Result<Value, TransformError> {
-    let num = || value.as_f64().ok_or_else(|| format!("expected a number, got {value}"));
+    let num = || {
+        value
+            .as_f64()
+            .ok_or_else(|| format!("expected a number, got {value}"))
+    };
     Ok(match t {
         OutType::F64 => Value::from(num()?),
         OutType::I64 => Value::from(num()?.round() as i64),
@@ -227,11 +241,10 @@ pub fn get_path(root: &Value, path: &str) -> Option<Value> {
             rest = &stripped[end + 1..];
             let index = if let Some((key, wanted)) = selector.split_once("==") {
                 // index of `wanted` in the sibling array `key`
-                parent
-                    .get(key)?
-                    .as_array()?
-                    .iter()
-                    .position(|v| v.as_str() == Some(wanted) || v.to_string() == wanted)?
+                parent.get(key)?.as_array()?.iter().position(|v| {
+                    v.as_str() == Some(wanted)
+                        || (v.is_number() && v.as_f64() == wanted.parse::<f64>().ok())
+                })?
             } else {
                 selector.parse::<usize>().ok()?
             };
@@ -259,16 +272,23 @@ mod tests {
 
     #[test]
     fn percent_to_metres_and_back() {
-        let to_m = spec("{from: window_percentage, ops: [{div: 100}, {mul: 0.4}, {add: 0.0}], type: f64}");
+        let to_m =
+            spec("{from: window_percentage, ops: [{div: 100}, {mul: 0.4}, {add: 0.0}], type: f64}");
         let input = json!({"window_percentage": 25, "alarm_enabled": true});
-        let ctx = Context { input: Some(&input), ..Default::default() };
+        let ctx = Context {
+            input: Some(&input),
+            ..Default::default()
+        };
         assert!((to_m.eval(&ctx).unwrap().as_f64().unwrap() - 0.1).abs() < 1e-12);
 
         let to_pct = spec(
             "{from: 'position[name==w]', ops: [{sub: 0.0}, {div: 0.4}, {mul: 100}, round, {clamp: [0, 100]}], type: u8}",
         );
         let js = json!({"name": ["x", "w"], "position": [9.0, 0.0987]});
-        let ctx = Context { input: Some(&js), ..Default::default() };
+        let ctx = Context {
+            input: Some(&js),
+            ..Default::default()
+        };
         assert_eq!(to_pct.eval(&ctx).unwrap(), json!(25));
     }
 
@@ -284,8 +304,18 @@ mod tests {
     }
 
     #[test]
+    fn selector_matches_strings_and_numbers() {
+        let v = json!({"name": ["a", "b"], "id": [7, 9], "pos": [1.0, 2.0]});
+        assert_eq!(get_path(&v, "pos[name==b]"), Some(json!(2.0)));
+        assert_eq!(get_path(&v, "pos[id==7]"), Some(json!(1.0)));
+        assert_eq!(get_path(&v, "pos[name==c]"), None);
+    }
+
+    #[test]
     fn exactly_one_source() {
-        assert!(spec("{const: 1, now_ms: true}").eval(&Context::default()).is_err());
+        assert!(spec("{const: 1, now_ms: true}")
+            .eval(&Context::default())
+            .is_err());
         assert!(spec("{ops: [round]}").eval(&Context::default()).is_err());
     }
 }

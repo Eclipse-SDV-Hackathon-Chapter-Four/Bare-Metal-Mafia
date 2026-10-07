@@ -13,6 +13,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 // Assisted-by: Anthropic Claude Opus 5.5 (claude-opus-5-5)
+// Assisted-by: Anthropic Claude Fable 5.1 (claude-fable-5-1)
 
 //! `ros_up_mapper`: the uProtocol side of ros-up-bridge.
 //!
@@ -25,12 +26,16 @@
 //!   ros_up_mapper --config /opt/ros_up_bridge/config/mirror.yaml
 //!
 //! Environment: ZENOH_CONNECT (Zenoh router endpoint), RUST_LOG,
-//! ROS_UP_MAPPER_CONFIG (instead of --config).
+//! ROS_UP_MAPPER_CONFIG (instead of --config), ROS_UP_STRICT_SINGLE_PUBLISHER
+//! (1 = exit with code 1 when a second publisher is detected, see guard.rs).
 //!
-//! HTTP (port from the mapping's `http.port`): GET /health, GET /stats.
+//! HTTP (port from the mapping's `http.port`): GET /health (503 once a second
+//! publisher was seen), GET /stats, plus the `http.path` of state routes.
 
 mod config;
 mod engine;
+mod guard;
+mod routes;
 mod transform;
 
 use std::path::PathBuf;
@@ -47,11 +52,13 @@ use tracing::info;
 
 use crate::config::Mode;
 use crate::engine::Stats;
+use crate::guard::Guard;
 
 #[derive(Clone)]
 struct HttpState {
     mode: Mode,
     stats: Arc<Stats>,
+    guard: Arc<Guard>,
 }
 
 #[tokio::main]
@@ -73,17 +80,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let transport = open_up_transport(make_uri_provider("ros-up-mapper", 0x9601, 0x01)).await?;
-    let zenoh = open_zenoh_session().await.map_err(|e| format!("zenoh open failed: {e}"))?;
-    let (_io, stats) = engine::start(&cfg, transport, zenoh).await.map_err(|e| e.to_string())?;
+    let zenoh = open_zenoh_session()
+        .await
+        .map_err(|e| format!("zenoh open failed: {e}"))?;
+    let guard = Guard::from_env();
+    let (io, http_states) = engine::start(&cfg, transport, zenoh, guard.clone())
+        .await
+        .map_err(|e| e.to_string())?;
 
     let Some(http) = &cfg.http else {
         tokio::signal::ctrl_c().await?;
         return Ok(());
     };
-    let app = Router::new()
+    let mut app = Router::new()
         .route("/health", get(health))
         .route("/stats", get(get_stats))
-        .with_state(HttpState { mode: cfg.mode, stats });
+        .with_state(HttpState {
+            mode: cfg.mode,
+            stats: io.stats.clone(),
+            guard,
+        });
+    for state in http_states {
+        let engine::HttpState {
+            path,
+            fields,
+            state,
+        } = state;
+        app = app.route(
+            &path,
+            get(move || {
+                let snapshot: serde_json::Map<String, Value> = state
+                    .lock()
+                    .map(|s| {
+                        fields
+                            .iter()
+                            .filter_map(|f| s.get(f).map(|v| (f.clone(), v.clone())))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                async move { Json(Value::Object(snapshot)) }
+            }),
+        );
+    }
     let addr = format!("0.0.0.0:{}", http.port);
     let listener = TcpListener::bind(&addr).await?;
     info!("ros_up_mapper HTTP on {addr} (/health, /stats)");
@@ -95,7 +133,10 @@ fn config_path() -> Result<PathBuf, String> {
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         if arg == "--config" {
-            return args.next().map(PathBuf::from).ok_or_else(|| "--config needs a path".into());
+            return args
+                .next()
+                .map(PathBuf::from)
+                .ok_or_else(|| "--config needs a path".into());
         }
     }
     std::env::var("ROS_UP_MAPPER_CONFIG")
@@ -104,11 +145,29 @@ fn config_path() -> Result<PathBuf, String> {
 }
 
 async fn health(State(app): State<HttpState>) -> (StatusCode, Json<Value>) {
-    (StatusCode::OK, Json(json!({"status": "ok", "mode": format!("{:?}", app.mode).to_lowercase()})))
+    let mode = format!("{:?}", app.mode).to_lowercase();
+    if app.guard.healthy() {
+        (StatusCode::OK, Json(json!({"status": "ok", "mode": mode})))
+    } else {
+        let n = app
+            .guard
+            .foreign_events
+            .load(std::sync::atomic::Ordering::Relaxed);
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"status": "unhealthy", "mode": mode,
+                        "reason": format!("second publisher detected ({n} foreign message(s))")})),
+        )
+    }
 }
 
 async fn get_stats(State(app): State<HttpState>) -> Json<Value> {
     let mut stats = app.stats.to_json();
     stats["mode"] = json!(format!("{:?}", app.mode).to_lowercase());
+    stats["foreign_publisher_events"] = json!(app
+        .guard
+        .foreign_events
+        .load(std::sync::atomic::Ordering::Relaxed));
+    stats["strict_single_publisher"] = json!(app.guard.strict());
     Json(stats)
 }
