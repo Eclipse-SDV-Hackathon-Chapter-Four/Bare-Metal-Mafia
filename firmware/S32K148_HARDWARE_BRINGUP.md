@@ -94,9 +94,38 @@ Gebaut (`cmake --preset s32k148-freertos`), geflasht, kein Compile-Fehler,
 — anwendbar auf einen frischen `eclipse-openbsw/openbsw`-Checkout mit
 `git apply 0001-windowposition-did-0xCF20.patch`.
 
-**Noch offen:** Die DID schreibt aktuell nur in einen RAM-Puffer (kein echter
-Aktor dran) — Guardian-Loop-Beweis ("Schreiben kommt an") funktioniert, ein
-sichtbarer physischer Effekt (LED/PWM/Relais) ist der nächste Ausbauschritt.
+Rust-seitig per DoIP/UDS real End-to-End gegen die echte Platine verifiziert
+(nicht simuliert): `services/src/bin/s32k148_doip_bridge.rs` liest die DID
+zyklisch (`0x22`) und schreibt sie jetzt auch (`0x2E`, neu hinzugefügt) —
+ein über uProtocol eingehendes `WindowPositionCommand` (von Guardians
+Mitigation-Kette) löst einen echten `WriteDataByIdentifier` an die ECU aus;
+das nächste Poll liest den neuen Wert zurück. Dabei fiel auf, dass die
+Standard-Tester-Adresse `0x0E00` von OpenBSWs
+`TransportConfiguration::isTesterAddress()` abgelehnt wird (nur
+`0x0EF0`–`0x0EFB` sind erlaubt) — Bridge-Default entsprechend korrigiert.
+
+**Noch offen → jetzt behoben (🤖, Patch geschrieben, noch nicht geflasht):**
+Die DID schrieb bisher nur in einen RAM-Puffer. Zweiter Patch
+[`0002-window-led-blink.patch`](0002-window-led-blink.patch) (wendet sich
+nach Patch 1 an, gleicher `git apply`-Workflow) lässt `EVAL_LED_RED` auf dem
+Board mit ~2 Hz blinken, solange `WindowPosition` > 0 % ist — getoggelt in
+`UdsSystem::execute()` (läuft bereits alle 10 ms), Hardware-API
+`Output::set(Output::EVAL_LED_RED, ...)` ist exakt dasselbe, das
+`DemoSystem.cpp` für die Onboard-LEDs dieses Boards schon nutzt
+(`PLATFORM_SUPPORT_IO`, aktiv für `s32k148evb`, bestätigt in
+`platforms/s32k148evb/Options.cmake`). Beide Patches wurden gegen einen
+frischen `eclipse-openbsw/openbsw`-Checkout in Sequenz getestet
+(`git apply --check`) und wenden sich fehlerfrei an — **noch nicht
+kompiliert/geflasht** (braucht die WSL-ARM-Toolchain + PEMicro-GDB-Server
+aus Abschnitt 3, physisch am Board). Nächster Schritt für jemanden mit
+Board-Zugriff:
+```bash
+git apply 0001-windowposition-did-0xCF20.patch
+git apply 0002-window-led-blink.patch
+cmake --preset s32k148-freertos && cmake --build --preset s32k148-freertos
+pegdbserver_console -startserver -device=NXP_S32K1xx_S32K148F2M0M11
+arm-none-eabi-gdb -batch -x flash.gdb <elf>
+```
 
 ## 6. SOVD/DoIP-Anbindung (CDA) 🤖
 
@@ -127,5 +156,6 @@ noch nicht bekannt — dafür `odx-gen/openbsw_ecu.json` erweitern und
 - [ ] `WindowPosition`-DID in die CDA-Datenbank (MDD) aufnehmen
 - [ ] `cda_sim` im `docker-compose.yml`-Stack durch das echte CDA ersetzen
       (Guardian-Code bleibt dabei unverändert — das ist der eigentliche Beweis)
-- [ ] Sichtbarer physischer Aktor für `WindowPosition` (LED/PWM) statt reinem RAM-Puffer
+- [x] Rust-seitiger UDS-Write-Pfad (`0x2E`) real gegen die Platine verifiziert (Guardian-Mitigation → echter DoIP-Write → Rücklesen)
+- [ ] Sichtbarer physischer Aktor für `WindowPosition` (LED/PWM) — Patch `0002-window-led-blink.patch` geschrieben + gegen Quellcode verifiziert, noch nicht gebaut/geflasht
 - [ ] openDuT-Topologiewechsel verdrahten (Vagrantfile bringt vcan/can-gw-Grundlage schon mit)
