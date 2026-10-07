@@ -26,6 +26,7 @@ pub const TOPIC_HVAC_ACTIVE_STATE: &str =
     "up/sdv/guardian/vss/Vehicle.Cabin.HVAC.IsAirConditioningActive";
 pub const TOPIC_HVAC_STATE: &str = "up/sdv/guardian/hvac/state";
 pub const TOPIC_S32_WINDOW_POSITION: &str = "up/sdv/guardian/s32k148/window_position";
+// AZ3166 additions below: assisted by Claude Code.
 pub const TOPIC_AZ3166_IMU: &str = "up/sdv/guardian/az3166/imu";
 
 pub const RID_CHILD_PRESENCE_EVENT: u16 = 0x9001;

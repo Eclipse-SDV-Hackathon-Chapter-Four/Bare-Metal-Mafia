@@ -1,3 +1,5 @@
+# Assisted by Claude Code.
+#
 # ARM GNU Toolchain cross-file for the AZ3166's STM32F412RG (Cortex-M4F) —
 # same toolchain and CPU flags as threadx-temp-sensor's Renode path
 # (STM32F407, also Cortex-M4F), just for this separate firmware project.

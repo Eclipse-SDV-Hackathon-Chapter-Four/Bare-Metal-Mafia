@@ -1,4 +1,6 @@
 /*
+ * Assisted by Claude Code.
+ *
  * AZ3166 ThreadX sensor bridge firmware — main.c
  *
  * Runs a single ThreadX thread that polls the onboard LSM6DSL
@@ -14,6 +16,14 @@
  * only needs to get sensor bytes off the chip. The host-side Rust bridge
  * is what republishes them onto uProtocol, per the project's Golden Rule
  * (guardian.rs stays hardware-agnostic).
+ *
+ * The onboard SSD1306 OLED mirrors the same reading plus a few debug
+ * values (sequence counter, board uptime, sensor health) directly on the
+ * board - handy when there's no serial terminal open. It also mirrors
+ * Guardian's own evaluate_state() thresholds (lib.rs: >=32C WARNING,
+ * >=40C CRITICAL) as a local label purely for visual debugging; this
+ * firmware makes no safety decision of its own - the host-side Guardian
+ * is still the only real state machine.
  */
 
 #include <tx_api.h>
@@ -22,9 +32,13 @@
 
 #include "board_init.h"
 #include "sensor.h"
+#include "ssd1306.h"
 
 #define SENSOR_THREAD_STACK_SIZE 4096
 #define SENSOR_POLL_TICKS 100 /* ThreadX tick is 100 Hz -> ~1 reading/second */
+
+#define LOCAL_WARNING_THRESHOLD_C 32.0f
+#define LOCAL_CRITICAL_THRESHOLD_C 40.0f
 
 static TX_THREAD sensor_thread;
 static UCHAR sensor_thread_stack[SENSOR_THREAD_STACK_SIZE];
@@ -34,12 +48,57 @@ static void uart_write_line(const char *line)
     HAL_UART_Transmit(&UartHandle, (uint8_t *)line, (uint16_t)strlen(line), 1000);
 }
 
+static void update_display(const lsm6dsl_data_t *reading, int sensor_ok, uint32_t seq,
+                            unsigned long long uptime_ms)
+{
+    char line[32];
+
+    ssd1306_Fill(Black);
+
+    ssd1306_SetCursor(0, 0);
+    ssd1306_WriteString("AZ3166 Guardian", Font_6x8, White);
+
+    if (sensor_ok)
+    {
+        snprintf(line, sizeof(line), "%.1fC", (double)reading->temperature_degC);
+    }
+    else
+    {
+        snprintf(line, sizeof(line), "ERR");
+    }
+    ssd1306_SetCursor(0, 11);
+    ssd1306_WriteString(line, Font_16x26, White);
+
+    char *state_label = "MONITORING";
+    if (!sensor_ok)
+    {
+        state_label = "NO SENSOR";
+    }
+    else if (reading->temperature_degC >= LOCAL_CRITICAL_THRESHOLD_C)
+    {
+        state_label = "CRITICAL";
+    }
+    else if (reading->temperature_degC >= LOCAL_WARNING_THRESHOLD_C)
+    {
+        state_label = "WARNING";
+    }
+    ssd1306_SetCursor(0, 39);
+    ssd1306_WriteString(state_label, Font_7x10, White);
+
+    snprintf(line, sizeof(line), "seq=%lu up=%llus", (unsigned long)seq, uptime_ms / 1000ULL);
+    ssd1306_SetCursor(0, 51);
+    ssd1306_WriteString(line, Font_6x8, White);
+
+    ssd1306_UpdateScreen();
+}
+
 static void sensor_thread_entry(ULONG arg)
 {
     (void)arg;
     uint32_t seq = 0;
+    int sensor_ok = (SENSOR_OK == lsm6dsl_config());
 
-    if (SENSOR_OK != lsm6dsl_config())
+    if (!sensor_ok)
     {
         uart_write_line("{\"error\":\"lsm6dsl_config_failed\"}\r\n");
     }
@@ -63,6 +122,8 @@ static void sensor_thread_entry(ULONG arg)
             (double)reading.temperature_degC,
             uptime_ms);
         uart_write_line(line);
+
+        update_display(&reading, sensor_ok, seq, uptime_ms);
 
         seq++;
         tx_thread_sleep(SENSOR_POLL_TICKS);

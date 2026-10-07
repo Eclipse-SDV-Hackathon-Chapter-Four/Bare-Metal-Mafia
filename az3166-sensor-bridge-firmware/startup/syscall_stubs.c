@@ -1,4 +1,6 @@
 /*
+ * Assisted by Claude Code.
+ *
  * -nostartfiles drops crti.o/crtn.o along with crt0.o, which is where
  * _init/_fini normally come from. newlib's __libc_init_array() (called
  * from startup_stm32f412rx.s before main()) calls _init() unconditionally,

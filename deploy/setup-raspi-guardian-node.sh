@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #
+# Assisted by Claude Code.
+#
 # Turn a Raspberry Pi (64-bit Raspberry Pi OS / any Debian-based ARM64 Linux)
 # into a shared, always-on Guardian Loop node: runs the FULL docker-compose
 # stack (zenohd, guardian, sensors, actuation chain, dashboard) locally,
@@ -109,10 +111,10 @@ step "Repository"
 if [[ -d "$REPO_DIR/.git" ]]; then
     echo "Already cloned at $REPO_DIR, pulling latest..."
     git -C "$REPO_DIR" fetch origin
-    git -C "$REPO_DIR" checkout S32_Hardware_Implement
-    git -C "$REPO_DIR" pull origin S32_Hardware_Implement
+    git -C "$REPO_DIR" checkout AZ3166-ThreadX-Sensor
+    git -C "$REPO_DIR" pull origin AZ3166-ThreadX-Sensor
 else
-    git clone --branch S32_Hardware_Implement "$REPO_URL" "$REPO_DIR"
+    git clone --branch AZ3166-ThreadX-Sensor "$REPO_URL" "$REPO_DIR"
 fi
 ok "Repository ready at $REPO_DIR"
 
@@ -179,6 +181,15 @@ else
         child-presence-sim temperature-sim actuation-adapter cda-sim window-controller-sim
 fi
 ok "Stack is up."
+
+if [[ "$RUN_AZ3166" -eq 1 ]]; then
+    # temperature-sim has no profile gate, so the `up` above just started it
+    # too - it publishes to the exact same CabinTemperatureEvent topic the
+    # real az3166-serial-bridge uses, and the two would fight over the value
+    # Guardian reacts to. Stop the simulator so the real sensor wins.
+    docker compose stop temperature-sim >/dev/null
+    ok "Stopped temperature-sim (AZ3166 is the real cabin-temperature source now)."
+fi
 
 # --- 6. Print access info ---------------------------------------------------------
 step "Access"

@@ -1,5 +1,7 @@
 # AZ3166 (MXChip IoT DevKit, STM32F412RG) ThreadX sensor bridge firmware.
 #
+# Assisted by Claude Code.
+#
 # Reads the onboard LSM6DSL (accelerometer + die temperature) and writes
 # one JSON line per reading to USART6 (the ST-Link virtual COM port). The
 # host-side services/src/bin/az3166_serial_bridge.rs Rust binary reads
@@ -53,6 +55,8 @@ add_executable(${PROJECT_NAME}
     vendor/stm32cubef4/stm32f4xx_hal_msp.c
     vendor/mxchip_bsp/lsm6dsl/Src/lsm6dsl_reg.c
     vendor/mxchip_bsp/lsm6dsl/Src/lsm6dsl_read_data_polling.c
+    vendor/mxchip_bsp/ssd1306/ssd1306.c
+    vendor/mxchip_bsp/ssd1306/ssd1306_fonts.c
     bsp/board_init.c
     src/main.c
 )
@@ -60,6 +64,7 @@ add_executable(${PROJECT_NAME}
 target_include_directories(${PROJECT_NAME} PRIVATE
     bsp
     vendor/mxchip_bsp/lsm6dsl/Inc
+    vendor/mxchip_bsp/ssd1306
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE

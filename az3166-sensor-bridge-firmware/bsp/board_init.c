@@ -1,16 +1,21 @@
 /*
+ * Assisted by Claude Code.
+ *
  * board_init.c — trimmed AZ3166 (STM32F412RG) board bring-up for the
  * Guardian Loop sensor bridge firmware.
  *
  * Derived from chheis/challenge-threadx-playRemote's MXChip/AZ3166 BSP
- * (app/board_init.c). The original also brought up an SSD1306 OLED, RGB
- * LED, and two push buttons; none of that is needed here, so it was
- * dropped. SystemClock_Config() is copied byte-for-byte from the upstream
- * BSP (26 MHz HSE -> 96 MHz SYSCLK via PLL) since it is the one part of
- * bring-up that must exactly match this specific board's crystal.
+ * (app/board_init.c). The original also brought up an RGB LED and two
+ * push buttons; those are still dropped (not needed here), but the
+ * onboard SSD1306 OLED is brought up - it shares I2C1 with the LSM6DSL,
+ * so no extra wiring/bus setup is needed, just ssd1306_Init() after
+ * I2C1_Init(). SystemClock_Config() is copied byte-for-byte from the
+ * upstream BSP (26 MHz HSE -> 96 MHz SYSCLK via PLL) since it is the one
+ * part of bring-up that must exactly match this specific board's crystal.
  */
 
 #include "board_init.h"
+#include "ssd1306.h"
 
 I2C_HandleTypeDef I2cHandle;
 UART_HandleTypeDef UartHandle;
@@ -31,6 +36,7 @@ void board_init(void)
     SystemClock_Config();
     UART_Console_Init();
     I2C1_Init();
+    ssd1306_Init();
 }
 
 /* System Clock Configuration: HSE (26 MHz) -> PLL -> SYSCLK 96 MHz. */

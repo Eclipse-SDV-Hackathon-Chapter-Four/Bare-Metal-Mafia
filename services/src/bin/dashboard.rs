@@ -81,6 +81,7 @@ struct S32WindowPositionListener {
     snapshot: Arc<Mutex<DashboardSnapshot>>,
 }
 
+// AZ3166 additions below: assisted by Claude Code.
 struct Az3166ImuListener {
     snapshot: Arc<Mutex<DashboardSnapshot>>,
 }

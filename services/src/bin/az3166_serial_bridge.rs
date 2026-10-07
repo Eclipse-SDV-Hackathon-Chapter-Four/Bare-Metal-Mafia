@@ -1,4 +1,6 @@
 /**
+ * Assisted by Claude Code.
+ *
  * az3166_serial_bridge — MXChip AZ3166 (Eclipse ThreadX) UART to uProtocol gateway
  *
  * Reads newline-delimited JSON sensor frames from the AZ3166's onboard

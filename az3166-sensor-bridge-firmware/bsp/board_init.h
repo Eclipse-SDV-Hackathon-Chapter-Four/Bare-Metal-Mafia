@@ -1,4 +1,6 @@
 /*
+ * Assisted by Claude Code.
+ *
  * board_init.h — trimmed AZ3166 (STM32F412RG) board bring-up for the
  * Guardian Loop sensor bridge firmware.
  *

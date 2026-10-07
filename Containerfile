@@ -20,6 +20,7 @@ RUN mkdir -p services/src/bin \
     && printf "fn main() {}\n" > services/src/bin/dashboard.rs \
     && printf "fn main() {}\n" > services/src/bin/s32k148_doip_bridge.rs \
     && printf "fn main() {}\n" > services/src/bin/az3166_serial_bridge.rs
+    # az3166_serial_bridge placeholder above: assisted by Claude Code
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
