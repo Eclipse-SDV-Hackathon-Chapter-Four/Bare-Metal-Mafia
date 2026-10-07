@@ -7,6 +7,19 @@
  * `S32WindowPositionEvent` on the Zenoh transport so the Guardian dashboard
  * (and, later, the Guardian Loop itself) never has to know DoIP/UDS exists.
  *
+ * Also subscribes to `uds_window_cmd_uri()` — the same topic
+ * `window_controller_sim` listens on for the simulated window — and, on
+ * receipt of a `WindowPositionCommand`, performs a real UDS
+ * WriteDataByIdentifier (SID 0x2E) against the same DID 0xCF20 on the real
+ * ECU. This makes the S32K148 a genuine actor at the end of the full
+ * Guardian Loop mitigation chain: `guardian` (in the AutoSD VM) ->
+ * `actuation_adapter` -> `cda_sim` -> this bridge (running on whichever
+ * host has direct automotive-Ethernet access, e.g. the Raspberry Pi) ->
+ * real DoIP/UDS write -> S32K148. The firmware side currently writes the
+ * value into a RAM buffer only (see `firmware/S32K148_HARDWARE_BRINGUP.md`,
+ * "Noch offen: kein echter Aktor") — confirmed via the read-back on the
+ * next poll cycle, not (yet) via a physical LED/motor.
+ *
  * This is a minimal, hand-rolled DoIP + UDS client (no external DoIP crate),
  * matching the hand-rolled SOME/IP framing style already used by
  * `someip_uprot_bridge.rs` for the ThreadX temperature sensor path.
@@ -45,15 +58,18 @@
  *   RUST_LOG              Log level                (default: info)
  */
 
+use async_trait::async_trait;
 use guardian_sil::{
-    make_uri_provider, open_up_transport, publish_json_event, s32_window_position_uri,
-    S32WindowPositionEvent,
+    decode_json_payload, make_uri_provider, open_up_transport, publish_json_event,
+    s32_window_position_uri, uds_window_cmd_uri, S32WindowPositionEvent, WindowPositionCommand,
 };
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use tracing::{info, warn};
+use up_rust::{UListener, UMessage, UTransport, UUri};
 
 const DOIP_PROTOCOL_VERSION: u8 = 0x02;
 const DOIP_INVERSE_PROTOCOL_VERSION: u8 = 0xFD;
@@ -69,6 +85,8 @@ const ROUTING_ACTIVATION_SUCCESS: u8 = 0x10;
 
 const UDS_SID_READ_DATA_BY_IDENTIFIER: u8 = 0x22;
 const UDS_SID_READ_DATA_BY_IDENTIFIER_POSITIVE_RESPONSE: u8 = 0x62;
+const UDS_SID_WRITE_DATA_BY_IDENTIFIER: u8 = 0x2E;
+const UDS_SID_WRITE_DATA_BY_IDENTIFIER_POSITIVE_RESPONSE: u8 = 0x6E;
 const UDS_SID_NEGATIVE_RESPONSE: u8 = 0x7F;
 
 const IO_TIMEOUT: Duration = Duration::from_secs(3);
@@ -240,6 +258,181 @@ fn parse_read_data_response(uds_response: &[u8], expected_did: u16) -> Result<Ve
     Ok(uds_response[3..].to_vec())
 }
 
+/// Connect, perform routing activation, send WriteDataByIdentifier(did,
+/// value), and confirm the ECU's positive response echoes the same DID.
+async fn write_did_over_doip(
+    ecu_addr: &str,
+    uds_address: u16,
+    tester_address: u16,
+    did: u16,
+    value: u8,
+) -> Result<(), DoIpError> {
+    let mut stream = timeout(IO_TIMEOUT, TcpStream::connect(ecu_addr))
+        .await
+        .map_err(|_| DoIpError::Protocol(format!("timeout connecting to {}", ecu_addr)))??;
+
+    // --- Routing Activation ---------------------------------------------
+    let mut activation_payload = Vec::with_capacity(7);
+    activation_payload.extend_from_slice(&tester_address.to_be_bytes());
+    activation_payload.push(ROUTING_ACTIVATION_TYPE_DEFAULT);
+    activation_payload.extend_from_slice(&[0u8; 4]); // reserved
+
+    let request = build_doip_frame(PAYLOAD_TYPE_ROUTING_ACTIVATION_REQUEST, &activation_payload);
+    stream.write_all(&request).await?;
+
+    let (payload_type, payload) = read_doip_frame(&mut stream).await?;
+    if payload_type != PAYLOAD_TYPE_ROUTING_ACTIVATION_RESPONSE {
+        return Err(DoIpError::Protocol(format!(
+            "expected routing activation response (0x0006), got 0x{:04X}",
+            payload_type
+        )));
+    }
+    if payload.len() < 5 || payload[4] != ROUTING_ACTIVATION_SUCCESS {
+        return Err(DoIpError::Protocol(format!(
+            "routing activation failed, response code: {:?}",
+            payload.get(4)
+        )));
+    }
+
+    // --- Diagnostic Message: WriteDataByIdentifier ----------------------
+    let mut uds_request = Vec::with_capacity(4);
+    uds_request.push(UDS_SID_WRITE_DATA_BY_IDENTIFIER);
+    uds_request.extend_from_slice(&did.to_be_bytes());
+    uds_request.push(value);
+
+    let mut diag_payload = Vec::with_capacity(4 + uds_request.len());
+    diag_payload.extend_from_slice(&tester_address.to_be_bytes());
+    diag_payload.extend_from_slice(&uds_address.to_be_bytes());
+    diag_payload.extend_from_slice(&uds_request);
+
+    let request = build_doip_frame(PAYLOAD_TYPE_DIAGNOSTIC_MESSAGE, &diag_payload);
+    stream.write_all(&request).await?;
+
+    for _ in 0..3 {
+        let (payload_type, payload) = read_doip_frame(&mut stream).await?;
+        match payload_type {
+            PAYLOAD_TYPE_DIAG_MESSAGE_POSITIVE_ACK | PAYLOAD_TYPE_DIAG_MESSAGE_NEGATIVE_ACK => {
+                continue;
+            }
+            PAYLOAD_TYPE_DIAGNOSTIC_MESSAGE => {
+                if payload.len() < 5 {
+                    return Err(DoIpError::Protocol("diagnostic message too short".into()));
+                }
+                let uds_response = &payload[4..];
+                return parse_write_data_response(uds_response, did);
+            }
+            other => {
+                return Err(DoIpError::Protocol(format!(
+                    "unexpected DoIP payload type 0x{:04X}",
+                    other
+                )));
+            }
+        }
+    }
+
+    Err(DoIpError::Protocol(
+        "no diagnostic message received after ACK(s)".into(),
+    ))
+}
+
+fn parse_write_data_response(uds_response: &[u8], expected_did: u16) -> Result<(), DoIpError> {
+    if uds_response.is_empty() {
+        return Err(DoIpError::Protocol("empty UDS response".into()));
+    }
+
+    if uds_response[0] == UDS_SID_NEGATIVE_RESPONSE {
+        let nrc = uds_response.get(2).copied().unwrap_or(0xFF);
+        return Err(DoIpError::Protocol(format!(
+            "ECU returned negative response, NRC=0x{:02X}",
+            nrc
+        )));
+    }
+
+    if uds_response[0] != UDS_SID_WRITE_DATA_BY_IDENTIFIER_POSITIVE_RESPONSE {
+        return Err(DoIpError::Protocol(format!(
+            "unexpected UDS response SID 0x{:02X}",
+            uds_response[0]
+        )));
+    }
+
+    if uds_response.len() < 3 {
+        return Err(DoIpError::Protocol("UDS response missing DID echo".into()));
+    }
+
+    let echoed_did = u16::from_be_bytes([uds_response[1], uds_response[2]]);
+    if echoed_did != expected_did {
+        return Err(DoIpError::Protocol(format!(
+            "DID mismatch: expected 0x{:04X}, got 0x{:04X}",
+            expected_did, echoed_did
+        )));
+    }
+
+    Ok(())
+}
+
+/// Listens for mitigation commands on `uds_window_cmd_uri()` (forwarded by
+/// `cda_sim`, originating from Guardian via `actuation_adapter`) and turns
+/// each one into a real UDS WriteDataByIdentifier against the S32K148.
+struct UdsWindowCommandListener {
+    ecu_addr: String,
+    uds_address: u16,
+    tester_address: u16,
+    window_did: u16,
+    transport: Arc<dyn UTransport>,
+    sink: UUri,
+}
+
+#[async_trait]
+impl UListener for UdsWindowCommandListener {
+    async fn on_receive(&self, message: UMessage) {
+        let cmd = match decode_json_payload::<WindowPositionCommand>(&message) {
+            Ok(cmd) => cmd,
+            Err(err) => {
+                warn!("Invalid UDS window command payload: {}", err);
+                return;
+            }
+        };
+
+        info!(
+            "Guardian mitigation -> real DoIP WriteDataByIdentifier: window={}% request_id={}",
+            cmd.percentage, cmd.request_id
+        );
+
+        match write_did_over_doip(
+            &self.ecu_addr,
+            self.uds_address,
+            self.tester_address,
+            self.window_did,
+            cmd.percentage,
+        )
+        .await
+        {
+            Ok(()) => {
+                info!(
+                    "DoIP write OK: S32K148 WindowPosition set to {}% (request_id={})",
+                    cmd.percentage, cmd.request_id
+                );
+                let event = S32WindowPositionEvent {
+                    percentage: cmd.percentage,
+                    source: "s32k148-doip-write".to_string(),
+                    timestamp_ms: now_ms(),
+                };
+                if let Err(e) =
+                    publish_json_event(self.transport.clone(), self.sink.clone(), &event).await
+                {
+                    warn!("uProtocol publish failed after DoIP write: {:?}", e);
+                }
+            }
+            Err(e) => {
+                warn!(
+                    "DoIP write failed: {} (ECU unreachable or rejected the write, request_id={})",
+                    e, cmd.request_id
+                );
+            }
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
@@ -287,6 +480,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!(
         "    uProtocol sink    : {}",
         guardian_sil::TOPIC_S32_WINDOW_POSITION
+    );
+
+    transport
+        .register_listener(
+            &uds_window_cmd_uri(),
+            None,
+            Arc::new(UdsWindowCommandListener {
+                ecu_addr: ecu_addr.clone(),
+                uds_address,
+                tester_address,
+                window_did,
+                transport: transport.clone(),
+                sink: sink.clone(),
+            }),
+        )
+        .await?;
+    info!(
+        "    Listening for Guardian mitigation commands on uds_window_cmd_uri (real UDS write)"
     );
 
     loop {
