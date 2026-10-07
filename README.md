@@ -194,7 +194,7 @@ The full recap is in [docs/Achieved.md](docs/Achieved.md).
 | 2 | **Deploy Guardian on the AutoSD HPC** | Stage 3 | **Partial.** Guardian and zenohd run as Podman containers in the AutoSD VM on the Pi |
 | 3 | **Move the sensors to real hardware** | Stage 4 | **Done.** AZ3166 with ThreadX replaced `temperature-sim`, and the Guardian never noticed |
 | 4 | **Strengthen the Guardian decision logic** | bonus | **Partial.** Redundant sensors and fault tolerance landed, rate of change and confidence did not. See below |
-| 5 | **Leverage the ROS 2 and Muto HVAC path** | Stage 2+ | **Done.** Plus our own Gazebo cabin and the generic ROS 2 ↔ uProtocol bridge |
+| 5 | **Leverage the ROS 2 and Muto HVAC path** | Stage 2+ | **Done.** Plus our own Gazebo cabin and its ROS 2 ↔ uProtocol bridge |
 | 6 | **Build the demo narrative along the five stages** | all | **Done.** `./gazebo-sim/run.sh demo` runs it end to end |
 
 ### Guardian logic ideas (goal 4)

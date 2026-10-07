@@ -10,7 +10,7 @@ swapped the world below them:
 
 - temperature: `temperature_sim` > ThreadX in Renode > AZ3166 on real hardware
 - window: `window_controller_sim` > S32K148 with OpenBSW over DoIP/UDS
-- window visualisation: simulated state > ROS 2 / Gazebo, depending on the compose profile
+- window and child seat: simulators > Gazebo cabin (`gazebo-sim/run.sh` in *replace* mode)
 
 That is the Golden Rule of the challenge, and it holds. Everything below is detail.
 
@@ -73,8 +73,7 @@ Summary: temperature sensor, Guardian Loop and window motor all run on real hard
 - HVAC commands feed back into `temperature_sim`, so cooling actually pulls the cabin
   temperature down on screen instead of only being logged.
 - Gazebo cabin simulation (`gazebo-sim/`), our own work: a rear-left window joint that
-  physically moves, a rear seat with a contact sensor, the car on a parking lot,
-  and smoke tests.
+  physically moves, a rear seat with a contact sensor, and the car on a parking lot.
 - The Gazebo to uProtocol bridge, also our own work: `gazebo-sim/bridge/ros_zenoh_bridge.py`
   on the ROS 2 side and `services/src/bin/gazebo_bridge.rs` on the uProtocol side, with
   two modes. *mirror* - Gazebo follows the real window state. *replace* - Gazebo
