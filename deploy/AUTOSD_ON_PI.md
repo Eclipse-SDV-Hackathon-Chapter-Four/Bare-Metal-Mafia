@@ -141,3 +141,159 @@ with `podman run`, confirm it starts and is reachable *from inside the
 VM* first. Only once that round-trips should port-forwarding/bridging
 (to reach it from outside the Pi) and the rest of the services get
 tackled.
+
+## How to add a "messenger" (alert on CRITICAL) service, running inside AutoSD
+
+This section is for anyone who wants Guardian to *send a message*
+(Slack webhook, MQTT, e-mail, a log line, whatever) when its state
+reaches `CRITICAL` - without touching `guardian.rs` itself.
+
+### The one rule that matters
+
+`guardian.rs` already publishes its own state on every change. A
+messenger is just **one more uProtocol subscriber** on that same topic -
+exactly the same pattern `dashboard.rs` and `cda_sim.rs` already use.
+Do **not** add notification code inside `guardian.rs` - that file is
+deliberately kept ignorant of anything hardware- or
+notification-specific (the project's "Golden Rule"). A new, separate
+binary is the right shape for this.
+
+### What Guardian already publishes
+
+- **Topic**: `up/sdv/guardian/vss/Vehicle.Cabin.Guardian.State`
+  (constant `TOPIC_GUARDIAN_STATE`, URI helper `vss_guardian_state_uri()`
+  in `services/src/lib.rs`).
+- **Payload** (JSON, one message per state change):
+  ```json
+  { "state": "CRITICAL", "child_present": true, "temperature_celsius": 29.4 }
+  ```
+  `state` is one of `CLEAR`, `MONITORING`, `WARNING`, `CRITICAL`,
+  `MITIGATING` (the Rust type is `GuardianState`, the wrapping struct is
+  `GuardianSnapshot` - both already defined in `services/src/lib.rs`,
+  reuse them, don't redefine).
+
+### Minimal implementation
+
+Add a new file `services/src/bin/guardian_messenger.rs` (name it
+whatever fits; this guide uses that name throughout):
+
+```rust
+//! guardian_messenger — sends an alert whenever Guardian's state
+//! reaches CRITICAL. Subscribes to the existing vss_guardian_state_uri()
+//! topic; does not touch guardian.rs.
+
+use async_trait::async_trait;
+use guardian_sil::{
+    decode_json_payload, make_uri_provider, open_up_transport, vss_guardian_state_uri,
+    GuardianSnapshot, GuardianState,
+};
+use tracing::{info, warn};
+use up_rust::{UListener, UMessage, UTransport};
+
+struct GuardianStateListener;
+
+#[async_trait]
+impl UListener for GuardianStateListener {
+    async fn on_receive(&self, message: UMessage) {
+        match decode_json_payload::<GuardianSnapshot>(&message) {
+            Ok(snapshot) if snapshot.state == GuardianState::Critical => {
+                // TODO: replace with a real Slack/MQTT/email call.
+                info!(
+                    "ALERT: Guardian is CRITICAL - child_present={} temperature={:.1}C",
+                    snapshot.child_present, snapshot.temperature_celsius
+                );
+            }
+            Ok(_) => {} // ignore non-critical states
+            Err(err) => warn!("failed to decode GuardianSnapshot: {}", err),
+        }
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt()
+        .with_target(false)
+        .with_env_filter(
+            std::env::var("RUST_LOG").unwrap_or_else(|_| "guardian_messenger=info,info".into()),
+        )
+        .init();
+
+    let uri_provider = make_uri_provider("guardian-messenger", 0x9207, 0x01);
+    let transport = open_up_transport(uri_provider).await?;
+
+    transport
+        .register_listener(&vss_guardian_state_uri(), None, std::sync::Arc::new(GuardianStateListener))
+        .await?;
+
+    info!("guardian_messenger listening on {:?}", guardian_sil::TOPIC_GUARDIAN_STATE);
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+    }
+}
+```
+
+Notes on the entity ID `0x9207`: every binary that opens a uProtocol
+transport needs its own unique entity ID in `make_uri_provider(...)`.
+`0x9207` is free as of this writing - grep `services/src/lib.rs` and the
+other `src/bin/*.rs` files for `make_uri_provider(` first to confirm
+nothing else has claimed it since.
+
+### Don't forget the `Containerfile` placeholder list
+
+`Containerfile` fakes out every binary *except* the one being built with
+a one-line `fn main() {}` stub, so a multi-binary cargo workspace build
+doesn't have to compile binaries it doesn't need. **This list is
+hardcoded** and has bitten this project before (`cargo build --bin X`
+fails with "no bin target named X" if X is missing from it). Add one
+line for the new binary, next to the existing ones:
+
+```dockerfile
+&& printf "fn main() {}\n" > services/src/bin/guardian_messenger.rs
+```
+
+### Build and run it inside the AutoSD VM
+
+The existing VM-side stack (`zenohd`, `guardian`, `dashboard`) already
+runs as plain `podman` containers built *from inside the VM* (see
+"Suggested next step" above) - do the same for the messenger:
+
+```bash
+# Inside the AutoSD VM (ssh root@<pi-ip> -p 2222, or however you reach it)
+cd ~/Bare-Metal-Mafia   # however the repo got onto the VM - git clone/pull
+git pull
+
+podman build -t guardian-messenger:dev \
+  --build-arg BIN_NAME=guardian_messenger \
+  -f Containerfile .
+
+podman run -d --name guardian-messenger \
+  --network guardian-net \
+  -e ZENOH_CONNECT=tcp/zenohd:7447 \
+  -e RUST_LOG=info \
+  localhost/guardian-messenger:dev
+
+podman logs -f guardian-messenger
+```
+
+`--network guardian-net` matters: it's the same user-defined Podman
+network `zenohd`/`guardian`/`dashboard` already use so container names
+resolve to each other (the default Podman bridge network does **not**
+give you that - see the zenoh/Podman gotchas earlier in this doc). If
+that network doesn't exist yet: `podman network create guardian-net`.
+
+### Testing it without waiting for real hardware
+
+The dashboard already has a "Set Child Present" / "Set Child Absent"
+button (`POST /api/child-presence`) that publishes a real
+`ChildPresenceEvent`. Combined with the real AZ3166 temperature already
+feeding Guardian (or `temperature-sim` if that's running instead), you
+can drive Guardian into `CRITICAL` on demand and watch
+`guardian-messenger`'s log line fire:
+
+```bash
+curl -s -X POST http://<dashboard-host>:<port>/api/child-presence \
+  -H 'Content-Type: application/json' -d '{"present":true}'
+
+podman logs --tail 20 guardian-messenger
+# should show: ALERT: Guardian is CRITICAL - child_present=true temperature=...
+```
