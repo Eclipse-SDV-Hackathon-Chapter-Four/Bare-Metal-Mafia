@@ -1,0 +1,87 @@
+diff --git a/executables/referenceApp/application/include/systems/UdsSystem.h b/executables/referenceApp/application/include/systems/UdsSystem.h
+index 310f987..19149f9 100644
+--- a/executables/referenceApp/application/include/systems/UdsSystem.h
++++ b/executables/referenceApp/application/include/systems/UdsSystem.h
+@@ -121,6 +121,10 @@ private:
+     // CF20 - WindowPosition (0..100%), Guardian Loop actuation target.
+     ReadIdentifierFromMemory _readCf20WindowPosition;
+     WriteIdentifierToMemory _writeCf20WindowPosition;
++    // Blinks EVAL_LED_RED at ~2Hz while WindowPosition > 0% - visible,
++    // physical confirmation that a UDS write actually landed, not just a
++    // RAM-buffer echo. Toggled from execute() (10ms cycle).
++    bool _windowLedState;
+ #ifdef PLATFORM_SUPPORT_UDS_DEMO_SERVICES
+     ReadIdentifierFromMemory _readF190;
+     DemoWriteVin _writeF190;
+diff --git a/executables/referenceApp/application/src/systems/UdsSystem.cpp b/executables/referenceApp/application/src/systems/UdsSystem.cpp
+index 94059bc..842f22a 100644
+--- a/executables/referenceApp/application/src/systems/UdsSystem.cpp
++++ b/executables/referenceApp/application/src/systems/UdsSystem.cpp
+@@ -17,8 +17,16 @@
+ #include <transport/ITransportSystem.h>
+ #include <transport/TransportConfiguration.h>
+
++#ifdef PLATFORM_SUPPORT_IO
++#include <outputManager/Output.h>
++#endif
++
+ namespace uds
+ {
++#ifdef PLATFORM_SUPPORT_IO
++using bios::Output;
++#endif
++
+ uint8_t const responseData22Cf01[]
+     = {0x01, 0x02, 0x00, 0x02, 0x22, 0x02, 0x16, 0x0F, 0x01, 0x00, 0x00, 0x6D,
+        0x2F, 0x00, 0x00, 0x01, 0x06, 0x00, 0x00, 0x8F, 0xE0, 0x00, 0x00, 0x01};
+@@ -27,8 +35,8 @@
+
+ // CF20 - WindowPosition (0..100%). Guardian Loop writes the target via
+ // WriteDataByIdentifier(0x2E); reads back via ReadDataByIdentifier(0x22)
+-// to confirm the actuation landed. Backing store only for now - wire to
+-// a real actuator (PWM/relay/LED) once the physical target is available.
++// to confirm the actuation landed. EVAL_LED_RED blinks while this is >0%
++// (see UdsSystem::execute()) as a visible stand-in actuator.
+ etl::array<uint8_t, 1> storedWindowPosition = {0};
+
+ #ifdef PLATFORM_SUPPORT_UDS_DEMO_SERVICES
+@@ -92,6 +100,7 @@
+ , _write2eCf03(0xCF03, storedData2eCf03)
+ , _readCf20WindowPosition(0xCF20, storedWindowPosition)
+ , _writeCf20WindowPosition(0xCF20, storedWindowPosition)
++, _windowLedState(false)
+ #ifdef PLATFORM_SUPPORT_UDS_DEMO_SERVICES
+ , _readF190(0xF190, ::etl::span<uint8_t const>(vinData.data(), vinData.size()))
+ , _writeF190(0xF190, ::etl::span<uint8_t>(vinData.data(), vinData.size()))
+@@ -300,6 +309,30 @@
+ #endif
+ }
+
+-void UdsSystem::execute() {}
++void UdsSystem::execute()
++{
++#ifdef PLATFORM_SUPPORT_IO
++    // ~2Hz blink (25 * 10ms half-period) of EVAL_LED_RED while the Guardian
++    // Loop's WindowPosition target is open (>0%). Visible, physical proof
++    // that the UDS WriteDataByIdentifier actually landed on this ECU, not
++    // just a RAM-buffer echo back over ReadDataByIdentifier.
++    static uint32_t counter = 0U;
++    ++counter;
++
++    if (storedWindowPosition[0] > 0U)
++    {
++        if ((counter % 25U) == 0U)
++        {
++            _windowLedState = !_windowLedState;
++            Output::set(Output::EVAL_LED_RED, _windowLedState ? 1 : 0);
++        }
++    }
++    else if (_windowLedState)
++    {
++        _windowLedState = false;
++        Output::set(Output::EVAL_LED_RED, 0);
++    }
++#endif
++}
+
+ } // namespace uds

@@ -170,17 +170,22 @@ pub struct S32WindowPositionEvent {
     pub timestamp_ms: u64,
 }
 
-/// LSM6DSL reading from the real MXChip AZ3166 (Eclipse ThreadX), dashboard-only
-/// detail. Note: `die_temperature_celsius` is the accelerometer chip's own die
-/// temperature, not true ambient cabin air temperature - it is published
-/// separately here for inspection. The Guardian-relevant value is republished
-/// by the same bridge onto the *existing* `CabinTemperatureEvent`/
-/// `vss_cabin_temperature_uri()` topic (same one `temperature_sim` uses), so
-/// Guardian's real decision logic reacts to it without any `guardian.rs` change.
+/// LSM6DSL + HTS221 reading from the real MXChip AZ3166 (Eclipse ThreadX),
+/// dashboard-only detail. Note: `die_temperature_celsius` is the LSM6DSL
+/// accelerometer chip's own die temperature, not true ambient cabin air
+/// temperature - it is published separately here for inspection. The
+/// Guardian-relevant value is republished by the same bridge onto the
+/// *existing* `CabinTemperatureEvent`/`vss_cabin_temperature_uri()` topic
+/// (same one `temperature_sim` uses), so Guardian's real decision logic
+/// reacts to it without any `guardian.rs` change. `humidity_pct` comes
+/// from the separate HTS221 sensor (genuine ambient-air reading, not a
+/// chip-self-heating proxy) - dashboard-only for now, same as the rest of
+/// this event.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Az3166ImuEvent {
     pub acceleration_mg: [f32; 3],
     pub die_temperature_celsius: f32,
+    pub humidity_pct: f32,
     pub seq: u32,
     pub board_uptime_ms: u64,
     pub timestamp_ms: u64,
@@ -264,6 +269,14 @@ pub async fn open_up_transport(
     UPTransportZenoh::try_init_log_from_env();
 
     let mut config = zenoh::Config::default();
+    // "client" mode only connects out to ZENOH_CONNECT - it never opens its
+    // own listener. Zenoh's default "peer" mode does open one (including an
+    // IPv6 wildcard), which hard-fails with EAFNOSUPPORT on hosts/containers
+    // where IPv6 is disabled at the kernel level (e.g. AutoSD's default
+    // `ipv6.disable=1` boot param) and otherwise just adds noisy, pointless
+    // peer-scouting traffic since every service here already talks through
+    // a zenohd router, never directly to another peer.
+    let _ = config.insert_json5("mode", "\"client\"");
     if let Ok(endpoint) = std::env::var("ZENOH_CONNECT") {
         let payload = format!("[\"{}\"]", endpoint);
         let _ = config.insert_json5("connect/endpoints", &payload);
@@ -307,6 +320,11 @@ pub fn decode_json_payload<T: serde::de::DeserializeOwned>(
 
 pub async fn open_zenoh_session() -> Result<zenoh::Session, zenoh::Error> {
     let mut config = zenoh::Config::default();
+
+    // See open_up_transport() above for why: avoids opening a listener
+    // (which fails outright with IPv6 disabled at the kernel level) since
+    // this process only ever needs to connect out to ZENOH_CONNECT.
+    let _ = config.insert_json5("mode", "\"client\"");
 
     if let Ok(endpoint) = std::env::var("ZENOH_CONNECT") {
         let payload = format!("[\"{}\"]", endpoint);

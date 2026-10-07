@@ -11,9 +11,10 @@
  * az3166_serial_bridge — MXChip AZ3166 (Eclipse ThreadX) UART to uProtocol gateway
  *
  * Reads newline-delimited JSON sensor frames from the AZ3166's onboard
- * LSM6DSL (accelerometer + die temperature), sent over the board's ST-Link
- * virtual COM port (the same USB cable used for flashing/debugging), and
- * republishes them as uProtocol events on the Zenoh transport.
+ * LSM6DSL (accelerometer + die temperature) and HTS221 (humidity), sent
+ * over the board's ST-Link virtual COM port (the same USB cable used for
+ * flashing/debugging), and republishes them as uProtocol events on the
+ * Zenoh transport.
  *
  * Publishes TWO events per reading:
  *
@@ -28,11 +29,13 @@
  *      at the same time - they publish to the same topic and will fight.
  *
  *   2. `Az3166ImuEvent` on a new, dashboard-only topic, carrying the full
- *      raw reading (acceleration + die temp + sequence/uptime) for
- *      inspection - Guardian never sees this one.
+ *      raw reading (acceleration + die temp + humidity + sequence/uptime)
+ *      for inspection - Guardian never sees this one. humidity_pct comes
+ *      from the HTS221, a genuine ambient-air sensor (unlike die_temp_c),
+ *      but isn't wired into any Guardian decision yet - dashboard-only.
  *
  * Wire format (one JSON object per line, UART @ 115200 baud by default):
- *   {"seq":1042,"accel_mg":[12,-980,34],"die_temp_c":27.4,"uptime_ms":58213}
+ *   {"seq":1042,"accel_mg":[12,-980,34],"die_temp_c":27.4,"humidity_pct":41.3,"uptime_ms":58213}
  *
  * Environment variables:
  *   AZ3166_SERIAL_PORT   Serial device/port (e.g. "COM4" on Windows,
@@ -67,6 +70,8 @@ struct Az3166SensorFrame {
     seq: u32,
     accel_mg: [f32; 3],
     die_temp_c: f32,
+    #[serde(default)]
+    humidity_pct: f32,
     uptime_ms: u64,
 }
 
@@ -169,6 +174,7 @@ async fn run_bridge_loop(
         let imu_event = Az3166ImuEvent {
             acceleration_mg: frame.accel_mg,
             die_temperature_celsius: frame.die_temp_c,
+            humidity_pct: frame.humidity_pct,
             seq: frame.seq,
             board_uptime_ms: frame.uptime_ms,
             timestamp_ms: now,
@@ -178,8 +184,8 @@ async fn run_bridge_loop(
         }
 
         info!(
-            "seq={} die_temp={:.1}C accel_mg={:?} uptime={}ms",
-            frame.seq, frame.die_temp_c, frame.accel_mg, frame.uptime_ms
+            "seq={} die_temp={:.1}C humidity={:.1}% accel_mg={:?} uptime={}ms",
+            frame.seq, frame.die_temp_c, frame.humidity_pct, frame.accel_mg, frame.uptime_ms
         );
     }
 

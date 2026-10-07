@@ -1,0 +1,3 @@
+# git apply rejects CRLF patches ("corrupt patch"); keep them LF even on
+# Windows checkouts with core.autocrlf=true.
+firmware/*.patch text eol=lf
