@@ -336,12 +336,18 @@ services:
     profiles:
       - threadx
 
-  # ── Optional Gazebo simulation backend (developer laptops only) ───────────
+  # ── Optional Gazebo cabin simulation (developer laptops only) ────────────
   #
-  # Gazebo Fortress (paired with ROS 2 Humble) running a minimal cabin world
-  # plus ros_gz_bridge. Headless by default; Linux hosts can add the GUI with
-  #   docker compose -f docker-compose.yml -f gazebo-sim/compose.gui.yml --profile gazebo up
-  # Not connected to Zenoh / uProtocol yet. See gazebo-sim/README.md.
+  # Start it with ./gazebo-sim/run.sh (sim | mirror | replace | demo | test),
+  # see gazebo-sim/README.md. Two services:
+  #   gazebo-sim     Gazebo Fortress + ROS 2 Humble: cabin world, moving rear-left
+  #                  window, row-2 seat contact sensor; its ROS side talks to
+  #                  Zenoh on plain keys gazebo/*
+  #   gazebo-bridge  Rust, maps gazebo/* to uProtocol. GAZEBO_MODE=mirror:
+  #                  Gazebo follows window-controller-sim, publishes nothing.
+  #                  GAZEBO_MODE=replace: Gazebo replaces window-controller-sim
+  #                  and child-presence-sim (run.sh then does not start them).
+  # GUI on Linux: add -f gazebo-sim/compose.gui.yml (run.sh does that itself).
   gazebo-sim:
     build:
       context: .
@@ -355,6 +361,28 @@ services:
       IGN_PARTITION: guardian_sim
       GZ_GUI: "false"
       GZ_VERBOSITY: "2"
+      ZENOH_CONNECT: tcp/zenohd:7447
+    depends_on:
+      - zenohd
+    profiles:
+      - gazebo
+
+  gazebo-bridge:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: gazebo_bridge
+    image: hack-to-the-future/gazebo-bridge:stage-gazebo
+    environment:
+      GAZEBO_MODE: ${GAZEBO_MODE:-mirror}
+      PORT: 8096
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/zenohd:7447
+    ports:
+      - "8096:8096"
+    depends_on:
+      - zenohd
     profiles:
       - gazebo
 

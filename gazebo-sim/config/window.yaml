@@ -25,7 +25,7 @@
 #
 # The prismatic joint axis points down, so a larger position means a wider
 # opening. The launch file writes travel_m into the joint's upper limit in
-# worlds/cabin.sdf at start-up, and test-window.sh / tools/sim_check.py use the
+# worlds/cabin.sdf at start-up, and bridge/ros_zenoh_bridge.py uses the
 # same values to convert percent to metres. Change it here and nowhere else.
 #
 # travel_m must not exceed 0.40: that is the height of the window opening and
