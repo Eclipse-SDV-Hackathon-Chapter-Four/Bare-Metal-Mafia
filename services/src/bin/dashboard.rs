@@ -545,6 +545,7 @@ const INDEX_HTML: &str = r#"<!doctype html>
       <section>
         <div class="eyebrow">AZ3166 IMU <span class="badge info">Real HW</span></div>
         <div class="value" id="az3166Value">--</div>
+        <div class="meta" id="az3166Humidity">--</div>
         <div class="meta" id="az3166Meta">Waiting for AZ3166 serial bridge event.</div>
       </section>
       <section>
@@ -610,6 +611,9 @@ const INDEX_HTML: &str = r#"<!doctype html>
 
         const az3166 = state.az3166_imu;
         document.getElementById('az3166Value').textContent = az3166 ? `${az3166.die_temperature_celsius.toFixed(1)}°C (die)` : '--';
+        document.getElementById('az3166Humidity').textContent = az3166
+          ? `Humidity (HTS221): ${az3166.humidity_pct.toFixed(1)}%`
+          : '';
         document.getElementById('az3166Meta').textContent = az3166
           ? `Accel mg: [${az3166.acceleration_mg.map(v => v.toFixed(0)).join(', ')}] | seq=${az3166.seq} | uptime=${az3166.board_uptime_ms}ms`
           : 'Waiting for AZ3166 serial bridge event.';

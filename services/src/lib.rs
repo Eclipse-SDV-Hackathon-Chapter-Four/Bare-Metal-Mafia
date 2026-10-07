@@ -169,17 +169,22 @@ pub struct S32WindowPositionEvent {
     pub timestamp_ms: u64,
 }
 
-/// LSM6DSL reading from the real MXChip AZ3166 (Eclipse ThreadX), dashboard-only
-/// detail. Note: `die_temperature_celsius` is the accelerometer chip's own die
-/// temperature, not true ambient cabin air temperature - it is published
-/// separately here for inspection. The Guardian-relevant value is republished
-/// by the same bridge onto the *existing* `CabinTemperatureEvent`/
-/// `vss_cabin_temperature_uri()` topic (same one `temperature_sim` uses), so
-/// Guardian's real decision logic reacts to it without any `guardian.rs` change.
+/// LSM6DSL + HTS221 reading from the real MXChip AZ3166 (Eclipse ThreadX),
+/// dashboard-only detail. Note: `die_temperature_celsius` is the LSM6DSL
+/// accelerometer chip's own die temperature, not true ambient cabin air
+/// temperature - it is published separately here for inspection. The
+/// Guardian-relevant value is republished by the same bridge onto the
+/// *existing* `CabinTemperatureEvent`/`vss_cabin_temperature_uri()` topic
+/// (same one `temperature_sim` uses), so Guardian's real decision logic
+/// reacts to it without any `guardian.rs` change. `humidity_pct` comes
+/// from the separate HTS221 sensor (genuine ambient-air reading, not a
+/// chip-self-heating proxy) - dashboard-only for now, same as the rest of
+/// this event.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Az3166ImuEvent {
     pub acceleration_mg: [f32; 3],
     pub die_temperature_celsius: f32,
+    pub humidity_pct: f32,
     pub seq: u32,
     pub board_uptime_ms: u64,
     pub timestamp_ms: u64,
@@ -333,9 +338,9 @@ pub fn evaluate_state(child_present: bool, temperature_celsius: f32) -> Guardian
         return GuardianState::Clear;
     }
 
-    if temperature_celsius >= 28.5 {
+    if temperature_celsius >= 40.0 {
         GuardianState::Critical
-    } else if temperature_celsius >= 25.0 {
+    } else if temperature_celsius >= 32.0 {
         GuardianState::Warning
     } else {
         GuardianState::Monitoring
