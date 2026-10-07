@@ -51,7 +51,12 @@
  *   S32K148_DOIP_PORT     DoIP TCP port            (default: 13400)
  *   S32K148_UDS_ADDRESS   ECU UDS logical address  (default: 0x002A, from
  *                         executables/referenceApp/configuration/include/app/appConfig.h)
- *   S32K148_TESTER_ADDRESS  Our own tester logical address (default: 0x0E00)
+ *   S32K148_TESTER_ADDRESS  Our own tester logical address (default: 0x0EF0 -
+ *                         must be in 0x0EF0..=0x0EFB, the only range
+ *                         TransportConfiguration::isTesterAddress() accepts
+ *                         in this referenceApp build; anything else gets
+ *                         DoIP routing activation denied with response
+ *                         code 0x00 "unknown source address")
  *   S32K148_WINDOW_DID    DID to read              (default: 0xCF20)
  *   POLL_INTERVAL_S       Poll period in seconds   (default: 2)
  *   ZENOH_CONNECT         Zenoh router endpoint    (default: tcp/zenohd:7447)
@@ -454,7 +459,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tester_address: u16 = std::env::var("S32K148_TESTER_ADDRESS")
         .ok()
         .and_then(|v| u16::from_str_radix(v.trim_start_matches("0x"), 16).ok())
-        .unwrap_or(0x0E00);
+        .unwrap_or(0x0EF0);
     let window_did: u16 = std::env::var("S32K148_WINDOW_DID")
         .ok()
         .and_then(|v| u16::from_str_radix(v.trim_start_matches("0x"), 16).ok())
