@@ -8,10 +8,10 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use guardian_sil::{
     az3166_imu_uri, decode_json_payload, hvac_state_uri, make_uri_provider, open_up_transport,
-    publish_json_event, s32_window_position_uri, vss_cabin_temperature_uri,
+    publish_json_event, s32_window_position_uri, uds_window_cmd_uri, vss_cabin_temperature_uri,
     vss_child_presence_uri, vss_guardian_state_uri, vss_window_state_uri, Az3166ImuEvent,
     CabinTemperatureEvent, ChildPresenceEvent, GuardianSnapshot, HvacStateEvent,
-    S32WindowPositionEvent, WindowStateEvent,
+    S32WindowPositionEvent, WindowPositionCommand, WindowStateEvent,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -63,6 +63,11 @@ struct FaultToggleRequest {
 #[derive(Debug, Deserialize)]
 struct ChildPresenceToggleRequest {
     present: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct WindowCommandRequest {
+    percentage: u8,
 }
 
 struct ChildPresenceListener {
@@ -279,6 +284,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/faults", get(get_faults))
         .route("/api/hvac/fault", post(set_hvac_fault))
         .route("/api/child-presence", post(set_child_presence))
+        .route("/api/window", post(set_window_position))
         .with_state(app_state);
 
     let listener = TcpListener::bind(&addr).await?;
@@ -386,6 +392,31 @@ async fn set_child_presence(
         .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
 
     Ok(Json(json!({ "present": payload.present })))
+}
+
+/// Manual window override: publishes a WindowPositionCommand directly onto
+/// `uds_window_cmd_uri()` - the exact topic `s32k148_doip_bridge.rs` (real
+/// hardware) or `window_controller_sim.rs` (simulated) listens on. This
+/// bypasses Guardian/actuation_adapter/cda_sim entirely on purpose: Guardian
+/// currently never re-closes the window on its own once it escalates (it
+/// only resets its own internal staging flags, see guardian.rs's
+/// recompute_and_log), so this is the deliberate manual reset path. It also
+/// doubles as an "open window on demand" button for demos/debugging
+/// without needing to drive the full CRITICAL state through Guardian.
+async fn set_window_position(
+    State(app): State<AppState>,
+    Json(payload): Json<WindowCommandRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let command = WindowPositionCommand {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        percentage: payload.percentage,
+    };
+
+    publish_json_event(app.transport.clone(), uds_window_cmd_uri(), &command)
+        .await
+        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+
+    Ok(Json(json!({ "percentage": payload.percentage })))
 }
 
 const INDEX_HTML: &str = r#"<!doctype html>
@@ -569,6 +600,10 @@ const INDEX_HTML: &str = r#"<!doctype html>
         <div class="eyebrow">Window</div>
         <div class="value" id="windowValue">--</div>
         <div class="meta" id="windowMeta">Waiting for window state event.</div>
+        <div class="actions">
+          <button class="fault-on" onclick="setWindow(25)">Open Window</button>
+          <button class="fault-off" onclick="setWindow(0)">Reset Window (Close)</button>
+        </div>
       </section>
       <section>
         <div class="eyebrow">HVAC</div>
@@ -635,7 +670,7 @@ const INDEX_HTML: &str = r#"<!doctype html>
         document.getElementById('windowValue').textContent = windowState ? `${windowState.window_percentage}%` : '--';
         document.getElementById('windowMeta').textContent = windowState
           ? `Alarm enabled: ${windowState.alarm_enabled} | ts=${windowState.timestamp_ms}`
-          : 'Waiting for window state event.';
+          : 'No value yet - this card listens for window_controller_sim (the simulated actuator), which isn\'t running in the real-hardware stack. See "S32K148 Window Position (Real HW)" below for the actual actuator state. The buttons here always work regardless, since they command the real/simulated actuator directly.';
 
         const hvac = state.hvac_state;
         document.getElementById('hvacValue').textContent = hvac
@@ -689,6 +724,15 @@ const INDEX_HTML: &str = r#"<!doctype html>
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ present })
+      });
+      await refreshState();
+    }
+
+    async function setWindow(percentage) {
+      await fetch('/api/window', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ percentage })
       });
       await refreshState();
     }
