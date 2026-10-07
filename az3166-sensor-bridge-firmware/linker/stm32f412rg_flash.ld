@@ -166,26 +166,6 @@ SECTIONS
     __RAM_segment_used_end__ = .;      /* For ThreadX */
   } >RAM
 
-  /* User_heap and stack sections, used to check that there is enough "RAM2" Ram  type memory left 
-  .heap :
-  {
-    . = ALIGN(8);
-    PROVIDE ( end = . );
-    _sheap = .;
-    . = . + _Heap_Size;
-    . = ALIGN(8);
-    _eheap = .;
-  } >RAM2
-
-  .stack :
-  {
-    . = ALIGN(8);
-    _estack = .;
-    . = . + _Stack_Size;
-    . = ALIGN(8);
-    _sstack = .;
-  } >RAM2
-*/
   /* Remove information from the compiler libraries */
   /DISCARD/ :
   {
