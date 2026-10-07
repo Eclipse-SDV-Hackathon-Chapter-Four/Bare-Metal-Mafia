@@ -190,23 +190,24 @@ The official challenge progression, and where we stand:
 
 ## Our Goals
 
-Ordered by what unblocks the most. Each goal names the stage it serves.
+What we set out to do, ordered by what unblocks the most, with how it ended.
+The full recap is in [docs/Achieved.md](docs/Achieved.md).
 
-| # | Goal | Serves | Rationale |
+| # | Goal | Serves | Outcome |
 | :--: | --- | :--: | --- |
-| 1 | **Get openDuT running as our testbench** | Stage 5 | Prerequisite for any hardware-swap demo. It must switch between at least two topologies, fully simulated and with a real endpoint |
-| 2 | **Deploy Guardian on the AutoSD HPC** | Stage 3 | Full-challenge requirement and currently untouched. The proof point is an identical service artifact before and after |
-| 3 | **Move the sensors to real hardware** | Stage 4 | AZ3166 with ThreadX replaces `temperature-sim`, and Guardian must not notice |
-| 4 | **Strengthen the Guardian decision logic** | bonus | Our differentiator beyond the Definition of Done. See below |
-| 5 | **Leverage the ROS 2 and Muto HVAC path** | Stage 2+ | Already present in `ros2-hvac/`. The work is integration and demonstration, not implementation |
-| 6 | **Build the demo narrative along the five stages** | all | Showing the same `evaluate_state` survive every swap is the pitch |
+| 1 | **Get openDuT running as our testbench** | Stage 5 | **Not started.** The one requirement we never reached |
+| 2 | **Deploy Guardian on the AutoSD HPC** | Stage 3 | **Partial.** Guardian and zenohd run as Podman containers in the AutoSD VM on the Pi |
+| 3 | **Move the sensors to real hardware** | Stage 4 | **Done.** AZ3166 with ThreadX replaced `temperature-sim`, and the Guardian never noticed |
+| 4 | **Strengthen the Guardian decision logic** | bonus | **Partial.** Redundant sensors and fault tolerance landed, rate of change and confidence did not. See below |
+| 5 | **Leverage the ROS 2 and Muto HVAC path** | Stage 2+ | **Done.** Plus our own Gazebo cabin and the generic ROS 2 ↔ uProtocol bridge |
+| 6 | **Build the demo narrative along the five stages** | all | **Done.** `ros-up-bridge/demo-guardian.sh` runs it end to end |
 
 ### Guardian logic ideas (goal 4)
 
-- **Rate of change.** A cabin heating at 0.5 °C/s is an emergency long before it crosses 40 °C.
-- **Sensor confidence.** The child-presence event already carries a confidence field, 0.98 in the simulator, and we currently ignore it. Use it to gate escalation.
-- **Redundant sensors.** Fuse several temperature sources and degrade gracefully when one drops out.
-- **Fault tolerance.** The stack already demonstrates an HVAC fault forcing escalation to window and alarm. Generalise that behaviour.
+- **Redundant sensors.** *Done.* `CabinTemperatureEvent` carries a `sensor_id`, a second temperature sensor was added, and two sensors disagreeing by more than 5 °C mark each other broken.
+- **Fault tolerance.** *Done.* If every known sensor is broken the Guardian starts cooling anyway — a missing sensor is not a safe cabin.
+- **Rate of change.** *Open.* A cabin heating at 0.5 °C/s is an emergency long before it crosses 40 °C.
+- **Sensor confidence.** *Open.* The child-presence event already carries a confidence field, 0.98 in the simulator, and we still ignore it. Use it to gate escalation.
 
 > All of this stays inside `evaluate_state` in `services/src/lib.rs`, and none of it may
 > introduce a transport or hardware dependency. See the Golden Rule.
