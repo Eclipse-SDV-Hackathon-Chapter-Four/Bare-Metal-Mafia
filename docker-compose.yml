@@ -318,6 +318,28 @@ services:
     profiles:
       - threadx
 
+  # ── Optional Gazebo simulation backend (developer laptops only) ───────────
+  #
+  # Gazebo Fortress (paired with ROS 2 Humble) running a minimal cabin world
+  # plus ros_gz_bridge. Headless by default; Linux hosts can add the GUI with
+  #   docker compose -f docker-compose.yml -f gazebo-sim/compose.gui.yml --profile gazebo up
+  # Not connected to Zenoh / uProtocol yet. See gazebo-sim/README.md.
+  gazebo-sim:
+    build:
+      context: .
+      dockerfile: gazebo-sim/Dockerfile
+    image: hack-to-the-future/gazebo-sim:stage-gazebo
+    environment:
+      # Separate DDS domain from ros2-hvac (ROS_DOMAIN_ID 0): no cross-talk on
+      # the shared compose network. Tools that should see /sim/* must use 42.
+      ROS_DOMAIN_ID: "42"
+      # Gazebo Transport partition, isolates this Gazebo from any other one.
+      IGN_PARTITION: guardian_sim
+      GZ_GUI: "false"
+      GZ_VERBOSITY: "2"
+    profiles:
+      - gazebo
+
 networks:
   default:
     name: hack-to-the-future-net

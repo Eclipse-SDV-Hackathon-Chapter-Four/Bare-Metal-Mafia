@@ -1,0 +1,20 @@
+# Linux-only override: run the Gazebo GUI on the host's X server.
+#
+#   xhost +local:
+#   docker compose -f docker-compose.yml -f gazebo-sim/compose.gui.yml --profile gazebo up --build
+#
+# With GZ_GUI=true the launch file runs `ign gazebo -r` (server and GUI in one
+# process) instead of the headless `ign gazebo -s -r`. /dev/dri gives the GUI
+# GPU acceleration; without a usable GPU set LIBGL_ALWAYS_SOFTWARE=1 on the
+# host before `up`. macOS and Windows: headless only, do not use this file.
+services:
+  gazebo-sim:
+    environment:
+      GZ_GUI: "true"
+      DISPLAY: ${DISPLAY:-:0}
+      QT_X11_NO_MITSHM: "1"
+      LIBGL_ALWAYS_SOFTWARE: ${LIBGL_ALWAYS_SOFTWARE:-0}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    devices:
+      - /dev/dri:/dev/dri
