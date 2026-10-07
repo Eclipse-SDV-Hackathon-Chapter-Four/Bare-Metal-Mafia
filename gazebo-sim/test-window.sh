@@ -80,7 +80,15 @@ for t in /model/cabin/joint/window_row2_left_joint/cmd_pos /model/cabin/joint_st
 done
 
 step "ROS 2 bridge topics"
-ROS_TOPICS="$(ros "timeout 15 ros2 topic list")"
+# Poll without the ros2 daemon: a freshly started daemon can answer before
+# DDS discovery has finished and return an empty list.
+ROS_TOPICS=""
+DEADLINE=$((SECONDS + 30))
+while [ ${SECONDS} -lt ${DEADLINE} ]; do
+  ROS_TOPICS="$(ros "timeout 15 ros2 topic list --no-daemon")"
+  printf '%s\n' "${ROS_TOPICS}" | grep -qx "/sim/seat/row2/contact" && break
+  sleep 2
+done
 for t in /sim/window/row2_left/position_cmd /sim/joint_states /sim/seat/row2/contact /clock; do
   if printf '%s\n' "${ROS_TOPICS}" | grep -qx "${t}"; then
     pass "ros topic ${t}"

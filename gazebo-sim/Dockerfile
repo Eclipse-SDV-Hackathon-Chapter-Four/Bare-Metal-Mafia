@@ -19,8 +19,11 @@ ARG ROS_DISTRO=humble
 #   ros-gz-sim         Gazebo Fortress itself plus the `ign` CLI
 #   ros-gz-bridge      parameter_bridge with YAML config_file support
 #   ros-gz-interfaces  ros_gz_interfaces/msg/Contacts
+#   libqt5svg5         SVG icons in the optional GUI (a recommends-only
+#                      dependency, skipped by --no-install-recommends)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
+        libqt5svg5 \
         ros-${ROS_DISTRO}-ros-gz-sim \
         ros-${ROS_DISTRO}-ros-gz-bridge \
         ros-${ROS_DISTRO}-ros-gz-interfaces \
