@@ -23,6 +23,9 @@ Every subcommand prints one result line and exits 0 on success, 1 on failure.
   sim_check.py window --percent 25 [--tolerance 0.005] [--timeout 20]
       publish the setpoint for <percent> on /sim/window/row2_left/position_cmd
       and wait until /sim/joint_states reports the joint within tolerance
+  sim_check.py joint --percent 25 [--tolerance 0.005] [--timeout 60]
+      read-only: publish nothing, wait until /sim/joint_states reports the
+      window joint at <percent> (someone else, e.g. ros-up-bridge, moves it)
   sim_check.py contact --expect present|absent [--timeout 5]
       present: a /sim/seat/row2/contact message naming child_seat arrives
       absent:  no /sim/seat/row2/contact message arrives within the timeout
@@ -68,7 +71,11 @@ def spin_until(node, done, timeout_s):
     return False
 
 
-def check_window(node, args):
+def watch_joint(node, args, publish):
+    """Wait until the window joint is within tolerance of args.percent.
+
+    publish=True drives the joint there itself; publish=False only observes.
+    """
     if not 0.0 <= args.percent <= 100.0:
         print(f'invalid percent {args.percent}')
         return False
@@ -86,10 +93,11 @@ def check_window(node, args):
             state['in_tol_since'] = None
 
     node.create_subscription(JointState, JOINT_STATES_TOPIC, on_joint_states, 10)
-    pub = node.create_publisher(Float64, CMD_TOPIC, 10)
-    # Re-publish the setpoint until done: the first messages can be lost while
-    # DDS discovery between this node and the bridge completes.
-    node.create_timer(0.2, lambda: pub.publish(Float64(data=target)))
+    if publish:
+        pub = node.create_publisher(Float64, CMD_TOPIC, 10)
+        # Re-publish the setpoint until done: the first messages can be lost
+        # while DDS discovery between this node and the bridge completes.
+        node.create_timer(0.2, lambda: pub.publish(Float64(data=target)))
 
     settled = spin_until(
         node,
@@ -99,9 +107,18 @@ def check_window(node, args):
     )
     pos = state['position']
     pos_txt = 'no joint_states received' if pos is None else f'{pos:.4f} m'
-    print(f'window {args.percent:g}% -> target {target:.4f} m, '
+    verb = 'window' if publish else 'joint (observed)'
+    print(f'{verb} {args.percent:g}% -> target {target:.4f} m, '
           f'actual {pos_txt}, tolerance {args.tolerance:.4f} m')
     return settled
+
+
+def check_window(node, args):
+    return watch_joint(node, args, publish=True)
+
+
+def check_joint(node, args):
+    return watch_joint(node, args, publish=False)
 
 
 def check_contact(node, args):
@@ -159,6 +176,12 @@ def main():
     p.add_argument('--settle', type=float, default=0.5,
                    help='seconds the joint must stay within tolerance')
     p.add_argument('--timeout', type=float, default=20.0)
+    p = sub.add_parser('joint')
+    p.add_argument('--percent', type=float, required=True)
+    p.add_argument('--tolerance', type=float, default=0.005)
+    p.add_argument('--settle', type=float, default=0.5,
+                   help='seconds the joint must stay within tolerance')
+    p.add_argument('--timeout', type=float, default=60.0)
     p = sub.add_parser('contact')
     p.add_argument('--expect', choices=('present', 'absent'), required=True)
     p.add_argument('--timeout', type=float, default=5.0)
@@ -169,7 +192,7 @@ def main():
     rclpy.init()
     node = Node('gazebo_sim_check')
     try:
-        ok = {'window': check_window, 'contact': check_contact,
+        ok = {'window': check_window, 'joint': check_joint, 'contact': check_contact,
               'clock': check_clock}[args.cmd](node, args)
     finally:
         node.destroy_node()

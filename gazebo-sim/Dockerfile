@@ -45,6 +45,16 @@ RUN apt-get update \
         ros-${ROS_DISTRO}-ros-gz-interfaces \
     && rm -rf /var/lib/apt/lists/*
 
+# ROS side of ros-up-bridge (only started when ROS_UP_BRIDGE_MODE is set).
+# eclipse-zenoh is pinned to the zenoh crate version in Cargo.lock (1.9.0)
+# that ros_up_mapper and the Rust services use.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3-pip \
+    && pip3 install --no-cache-dir eclipse-zenoh==1.9.0 \
+    && rm -rf /var/lib/apt/lists/*
+COPY ros-up-bridge/ros_side /opt/ros_up_bridge/ros_side
+COPY ros-up-bridge/config /opt/ros_up_bridge/config
+
 COPY gazebo-sim/worlds /opt/gazebo_sim/worlds
 COPY gazebo-sim/config /opt/gazebo_sim/config
 COPY gazebo-sim/launch /opt/gazebo_sim/launch
