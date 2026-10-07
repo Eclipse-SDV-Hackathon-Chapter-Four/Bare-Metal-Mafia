@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
@@ -33,6 +34,7 @@ struct GuardianRuntime {
     child_present: bool,
     temperature_celsius: f32,
     current_state: GuardianState,
+    ews_warn: Arc<AtomicBool>,
     hvac_active: bool,
     hvac_fault_active: bool,
     hvac_target_temperature_celsius: i8,
@@ -170,6 +172,7 @@ impl GuardianRuntime {
             child_present: false,
             temperature_celsius: 26.0,
             current_state: GuardianState::Clear,
+            ews_warn: Arc::new(AtomicBool::new(false)),
             hvac_active: false,
             hvac_fault_active: false,
             hvac_target_temperature_celsius: 22,
@@ -450,7 +453,9 @@ async fn handle_ews_socket(mut socket: WebSocket, app: AppState) {
     }
 }
 
-fn handle_ews_warning(_warning: EwsWarn) {}
+fn handle_ews_warning(warning: EwsWarn) {
+
+}
 
 async fn request_mitigation(app: &AppState, rpc_client: Arc<InMemoryRpcClient>) {
     let request = {
