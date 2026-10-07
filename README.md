@@ -225,8 +225,7 @@ The full recap is in [docs/Achieved.md](docs/Achieved.md).
 | **OpenBSW Window Controller**, S32K148 hardware | `firmware/`, `services/src/bin/s32k148_doip_bridge.rs` | Done, **on real hardware** (UDS `0x2E` over DoIP, DID `0xCF20`) |
 | **ROS 2 HVAC workload**, Eclipse Muto with CAN bridge | `ros2-hvac/`, `services/src/bin/ros2_hvac_bridge.rs` | Done |
 | **Dashboard**, live one-page view | `services/src/bin/dashboard.rs`, port 8094 | Done |
-| **Gazebo cabin simulation**, Fortress world (window joint, seat contact) and `ros_gz_bridge`, profile `gazebo`, laptops only | `gazebo-sim/` | Done, **our own work** (not from the reference stack) |
-| **Generic ROS 2 ↔ uProtocol bridge** (`ros-up-bridge`), YAML-mapped; mode *mirror* (Gazebo follows the window state) and *replace* (Gazebo replaces the window controller and child presence simulators) | `ros-up-bridge/`, `services/src/bin/ros_up_mapper/` | Done, **our own work** (not from the reference stack) |
+| **Gazebo cabin simulation**, Fortress world (window joint, seat contact) with a ROS 2 ↔ uProtocol bridge; mode *mirror* (Gazebo follows the window state) and *replace* (Gazebo replaces the window controller and child presence simulators), one start script, laptops only | `gazebo-sim/`, `services/src/bin/gazebo_bridge.rs` | Done, **our own work** (not from the reference stack) |
 | **AutoSD HPC deployment** | `deploy/AUTOSD_ON_PI.md`, `deploy/setup-raspi-guardian-node.sh` | Partial, Guardian + zenohd proven in the VM |
 | **openDuT topology** | — | Open, never started |
 | **eCall / Notification service**, Telegram via EWS WebSocket (Java) | `notification/` | Done, mock |
@@ -260,8 +259,8 @@ Optional profiles:
 ```bash
 docker compose --profile ros2 up --build      # adds ROS 2 HVAC via Eclipse Muto
 docker compose --profile threadx up --build   # adds the ThreadX sensor over SOME/IP
-docker compose --profile gazebo up --build    # adds the Gazebo cabin simulation (see gazebo-sim/README.md)
-COMPOSE_CMD="docker compose" HVAC=1 ./ros-up-bridge/demo-guardian.sh   # Guardian Loop with Gazebo + HVAC, live status lines
+./gazebo-sim/run.sh demo                      # Guardian Loop with the Gazebo cabin, guided (see gazebo-sim/README.md)
+./gazebo-sim/run.sh demo --hvac --fault       # ... plus ROS 2 HVAC that breaks down, so the window opens
 ```
 
 The full walkthrough is in [docs/Tutorial.md](docs/Tutorial.md).
@@ -326,8 +325,8 @@ below the copyright and licence header.
 
 | Tool | Used for |
 |---|---|
-| Claude Code with Anthropic Claude Opus 5.5 (`claude-opus-5-5`) | `gazebo-sim/` (Gazebo simulation backend) and most of `ros-up-bridge/` + `services/src/bin/ros_up_mapper/` (ROS 2 ↔ uProtocol bridge): code, configuration, tests and their documentation, plus the related additions to `docker-compose.yml` (the `gazebo-sim` service), to this README and [NOTICE.md](NOTICE.md) |
-| Claude Code with Anthropic Claude Fable 5.1 (`claude-fable-5-1`) | the bridge's replace mode (state/presence routes, runtime single-publisher guard, `compose.replace.yml`, `test-replace.sh`), later parts of mirror (setpoint repeat, test hardening), the separate Gazebo server/GUI start, and the publish-race fix in `services/src/bin/window_controller_sim.rs` (marked with `Assisted-by` comments in that file) |
+| Claude Code with Anthropic Claude Opus 5.5 (`claude-opus-5-5`) | `gazebo-sim/` (Gazebo simulation backend, `run.sh`, ROS side of the bridge) and `services/src/bin/gazebo_bridge.rs` (uProtocol side of the bridge): code, configuration, tests and their documentation, plus the related additions to `docker-compose.yml` (the `gazebo-sim` and `gazebo-bridge` services), to `Containerfile`, to this README and [NOTICE.md](NOTICE.md) |
+| Claude Code with Anthropic Claude Fable 5.1 (`claude-fable-5-1`) | the separate Gazebo server/GUI start in `gazebo-sim/launch/gazebo_sim.launch.py`, and the publish-race fix in `services/src/bin/window_controller_sim.rs` (marked with `Assisted-by` comments in that file) |
 
 **How we mark it.** These are our project conventions on top of the
 guidelines, not requirements of the guidelines themselves:

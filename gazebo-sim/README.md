@@ -14,286 +14,139 @@
 
   SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
   Assisted-by: Anthropic Claude Opus 5.5 (claude-opus-5-5)
-  Assisted-by: Anthropic Claude Fable 5.1 (claude-fable-5-1)
 -->
 
-# gazebo-sim — optional Gazebo simulation backend
+# gazebo-sim — Gazebo cabin simulation
 
-`gazebo-sim` adds a physics simulation of the vehicle cabin to the Guardian
-Loop stack: a rear-left window that actually moves, and a rear seat with a
-contact sensor for later child-presence work. It is **our own work**
-(Bare-Metal-Mafia), not part of the inherited reference stack.
+A physics simulation of the car for the Guardian Loop: a rear-left window
+that really moves and a rear seat with a contact sensor. Gazebo can either
+**mirror** the simulated window controller or **replace** the window
+controller and the child presence simulator, without any change to the
+Guardian. Our own work, optional, developer laptops only.
 
-It is **optional** and lives only in the compose profile `gazebo`. The default
-stack (`docker compose up`) is unchanged. It runs on **developer laptops
-only** and is not part of any Raspberry Pi / AutoSD HPC deployment.
+## Quick start
 
-This is step 1: Gazebo, a minimal world and `ros_gz_bridge`, tested. The
-generic ROS 2 ↔ uProtocol bridge that connects it to the Guardian comes
-later; for now nothing here talks to Zenoh.
-
-## Why Gazebo Fortress
-
-The rest of the stack (`ros2-hvac/`) is on **ROS 2 Humble**, and the Gazebo
-release officially paired with Humble is **Fortress** (ign-gazebo 6). The
-image installs `ros-humble-ros-gz-sim`, `-bridge` and `-interfaces` from the
-ROS apt repository, which pull Fortress (`libignition-gazebo6`,
-`ignition-msgs8`, `ignition-transport11`). We chose it deliberately so ROS
-and Gazebo come from one consistent package set: no Harmonic, no Gazebo
-Classic, no mixed versions.
-
-Consequences you will notice: the CLI is `ign` (not `gz`), message types
-are `ignition.msgs.*`, plugins are `ignition-gazebo-*-system`, and the
-partition variable is `IGN_PARTITION`.
-
-## Start
-
-Commands use `docker compose`; with Podman write `podman-compose`. Run them
-from the repository root.
-
-### Headless (default, all host OSes)
+Needs Docker with Compose v2, and Linux for the Gazebo window.
 
 ```bash
-docker compose --profile gazebo up --build -d gazebo-sim   # only the simulation
-docker compose --profile gazebo up --build                 # default stack + simulation
+./gazebo-sim/run.sh demo              # Guardian Loop with Gazebo, guided, ~2 min
+./gazebo-sim/run.sh test              # end-to-end checks, prints PASS/FAIL
+./gazebo-sim/run.sh down              # stop everything
 ```
 
-The container runs `ign gazebo -s -r` (server only, simulation running) and
-`ros_gz_bridge`, both from `launch/gazebo_sim.launch.py`. The first build
-takes a few minutes (see [Image size and build time](#image-size-and-build-time)).
+The first start builds the images (10–30 min, ~3 GB for Gazebo). Every later
+start rebuilds from cache in seconds, so you never run an outdated image.
 
-### With GUI (Linux hosts only)
-
-```bash
-xhost +local:
-docker compose -f docker-compose.yml -f gazebo-sim/compose.gui.yml --profile gazebo up --build gazebo-sim
-```
-
-`compose.gui.yml` sets `GZ_GUI=true`, forwards `DISPLAY` and
-`/tmp/.X11-unix`, and passes `/dev/dri` for GPU acceleration. With
-`GZ_GUI=true` the launch file starts the GUI client `ign gazebo -g` as a
-second process next to the server `ign gazebo -s -r`, so server and GUI run
-together. (Not as one `ign gazebo -r <world>`: there the ign Ruby wrapper
-forks both from one multi-threaded process, and the forked server
-intermittently hung before loading the world.) The GUI uses
-[`config/gui.config`](config/gui.config): the camera starts outside the
-car on its left side, slightly above it, so you see the rear-left window
-face-on, the child seat behind it (or next to the car) and the parking
-lot. Orbit
-with the mouse; the camera button (or service `/gui/screenshot`) saves a PNG
-inside the container. Closing the GUI window stops the simulation and the
-container (the launch file shuts everything down when one process exits).
-
-Then run the guided demo ([Demo](#demo)) and watch it in that window.
-
-If the GUI window stays black or Ogre fails to start (no usable GPU, a VM,
-NVIDIA without the container toolkit), fall back to software rendering:
-
-```bash
-LIBGL_ALWAYS_SOFTWARE=1 docker compose -f docker-compose.yml -f gazebo-sim/compose.gui.yml --profile gazebo up gazebo-sim
-```
-
-Run `xhost -local:` afterwards if you do not want to keep X access open.
-
-**macOS and Windows: headless only.** The GUI override needs a Linux X
-server socket and `/dev/dri`. Docker Desktop on macOS/Windows has neither.
-Use the topics and the test script instead. WSLg may work but is untested.
-
-## What is in the world
-
-`worlds/cabin.sdf`, primitives only (no meshes, no Fuel downloads): a car
-with roof and sunroof parked in a parent-and-child bay of a small parking
-lot. The child seat on the rear seat is visible through the rear-left
-window.
-
-| Entity | Notes |
+| Command | What it does |
 |---|---|
-| `ground_plane` | asphalt |
-| `parking_lot` | static, visual only: bay markings, the blue parent-and-child bay with sign, curb, green strip, trees, street lamp |
-| `parked_car_1`, `parked_car_2` | static neighbours in the bays to the right, visual only |
-| `cabin` / `body` | our car, welded to the world: floor, doors up to the belt line, hood, trunk, windshield, fixed side windows, roof with sunroof, pillars and rear window (roof parts visual only), front seats, steering wheel, wheels, lights, mirrors, plates |
-| `cabin` / `seat_row2` | rear seat (base, cushion, backrest); **contact sensor** on the cushion collision |
-| `cabin` / `window_row2_left` | rear-left glass on the prismatic joint `window_row2_left_joint`, axis pointing down (slides into the rear-left door), `<gravity>false</gravity>`, visual only (no collision) |
-| `child_seat` | a toddler in a child seat (head, torso, arms, legs; orange seat shell) on one free rigid body; only the seat base and backrest collide. Starts on the ground beside the rear-left door |
+| `sim` | Gazebo only (plus zenohd and gazebo-bridge for `/state`) |
+| `mirror` | full stack; Gazebo follows `window-controller-sim` |
+| `replace` | full stack; Gazebo replaces `window-controller-sim` and `child-presence-sim` |
+| `demo` | `replace` plus a scripted story with a status line every 2 s |
+| `test [replace\|mirror]` | end-to-end checks, exit code 1 on failure |
+| `seat place\|remove` | child seat onto the rear seat / back outside the car |
+| `window <0-100>` | window opening in percent (through the dashboard API when the stack runs) |
+| `fault on\|off` | inject / clear the HVAC fault (stack started with `--hvac`) |
+| `status` | one status line: Guardian, child, cabin, window, glass, HVAC |
+| `logs [service…]` | follow logs, default `gazebo-sim gazebo-bridge` |
+| `down` | stop everything |
 
-The functional geometry is fixed: interior floor top z 0.375, seat cushion
-top z 0.625 at x -0.6, window opening x -0.95..-0.05 / z 0.875..1.275, and
-all joint and topic names. Purely visual parts can be changed freely.
+Flags: `--gui` / `--no-gui` (default: GUI when `DISPLAY` is set on Linux),
+`--hvac` (adds the ROS 2 HVAC via Eclipse Muto, ~3 min to deploy),
+`--fault` (demo only, with `--hvac`: the HVAC breaks once the child is
+seated, so the Guardian opens the window). `COMPOSE_CMD` picks another
+compose command.
 
-World systems: Physics, UserCommands (for `set_pose`), SceneBroadcaster (for
-the GUI), Contact. Model systems: JointPositionController and
-JointStatePublisher on the window joint, both with explicit `<topic>`.
-There is deliberately **no Sensors system**: it needs a rendering engine,
-which is unstable headless without a GPU, and the contact sensor does not
-need it.
+Watch: dashboard <http://localhost:8094>, bridge state
+<http://localhost:8096/state>, HVAC console <http://localhost:18081>
+(`--hvac`).
 
-## Topics
-
-ROS 2 side, `ROS_DOMAIN_ID=42`. Bridge configuration:
-[`config/bridge.yaml`](config/bridge.yaml).
-
-| ROS 2 topic | ROS 2 type | Direction | Gazebo topic | Gazebo type |
-|---|---|:--:|---|---|
-| `/sim/window/row2_left/position_cmd` | `std_msgs/msg/Float64` (metres) | ROS → GZ | `/model/cabin/joint/window_row2_left_joint/cmd_pos` | `ignition.msgs.Double` |
-| `/sim/joint_states` | `sensor_msgs/msg/JointState` | GZ → ROS | `/model/cabin/joint_state` | `ignition.msgs.Model` |
-| `/sim/seat/row2/contact` | `ros_gz_interfaces/msg/Contacts` | GZ → ROS | `/model/cabin/seat/row2/contact` | `ignition.msgs.Contacts` |
-| `/clock` | `rosgraph_msgs/msg/Clock` | GZ → ROS | `/clock` | `ignition.msgs.Clock` |
-
-Gazebo publishes contacts **only while something touches the cushion**. An
-empty seat means no messages at all, not an empty message.
-
-### Domain and partition isolation
-
-`ros2-hvac` uses `ROS_DOMAIN_ID=0`. `gazebo-sim` sets `ROS_DOMAIN_ID=42`
-(in the Dockerfile and, visibly, in `docker-compose.yml`), so the two ROS
-graphs never see each other even though they share the compose network.
-`IGN_PARTITION=guardian_sim` does the same for Gazebo Transport. Any tool
-that wants to see `/sim/*` must use domain 42; running inside the container
-(`docker compose exec gazebo-sim bash`) does that automatically.
-
-## Window mapping, 0–100 %
-
-Defined in one place, [`config/window.yaml`](config/window.yaml):
+## How it fits together
 
 ```text
-joint_position_m = closed_position_m + (percent / 100) * travel_m
-                 = 0.0               + (percent / 100) * 0.40
+ gazebo-sim container (ROS_DOMAIN_ID 42)                         services
+┌──────────────────────────────────────────────┐  Zenoh    ┌───────────────┐ uProtocol ┌──────────────┐
+│ Gazebo ⇄ ros_gz_bridge ⇄ ROS 2 /sim/* topics │  gazebo/* │ gazebo-bridge │ (zenohd)  │ guardian,    │
+│                     ⇅                        │ ────────► │ (Rust)        │ ────────► │ cda-sim, …   │
+│ bridge/ros_zenoh_bridge.py  (% ⇄ metres)     │ ◄──────── │ mirror/replace│ ◄──────── │              │
+└──────────────────────────────────────────────┘           └───────────────┘           └──────────────┘
 ```
 
-| Opening | Joint position |
-|---:|---:|
-| 0 % (closed) | 0.00 m |
-| 25 % | 0.10 m |
-| 100 % (open) | 0.40 m |
+| Zenoh key | Direction | JSON |
+|---|---|---|
+| `gazebo/window/cmd` | bridge → Gazebo | `{"percent": 25.0}` setpoint, re-sent every second |
+| `gazebo/window/position` | Gazebo → bridge | `{"percent": 24.6}` measured glass, ≤ 10 Hz |
+| `gazebo/seat/contact` | Gazebo → bridge | `{"contacts": 3}` only while something touches the cushion, ≤ 20 Hz |
 
-The launch file writes `travel_m` into the joint's upper limit
-(`@WINDOW_TRAVEL_M@` in `cabin.sdf`), and `tools/sim_check.py` converts
-percent with the same file. `/sim/window/row2_left/position_cmd` itself
-carries **metres**; whoever speaks percent (the later uProtocol bridge,
-following the window controller's `window_percentage`) must apply this
-mapping. `travel_m` may not exceed 0.40 m, the height of the opening.
+**mirror** (`GAZEBO_MODE=mirror`): the bridge listens to `vss_window_state`
+and moves the glass. It publishes nothing on uProtocol.
 
-## Demo
+**replace** (`GAZEBO_MODE=replace`): `run.sh` does not start
+`window-controller-sim` and `child-presence-sim`. The bridge takes
+`uds/window/cmd` and `uds/alarm/cmd` and publishes
 
-```bash
-COMPOSE_CMD="docker compose" ./gazebo-sim/demo.sh
-```
+- `vss_window_state` from the measured glass position, same JSON as
+  `window-controller-sim`: on start, on every command, and while the glass
+  moves (whole-percent changes, at most 5 Hz);
+- `vss_child_presence` from the seat contact: 300 ms without contact means
+  empty, a change must hold 400 ms, plus a heartbeat every second;
+  `confidence` 1.0, `zone` `rear_center`. Any object on the cushion counts.
 
-Plays a short story with pauses (`DEMO_PAUSE_S`, default 3 s), best watched
-in the GUI: child seat outside → child placed on the rear seat (contact
-sensor fires) → window 25 % (Guardian stage 2) → 100 % → closed → child
-taken out (contacts stop). Each step prints what the ROS 2 side measured.
-Takes about a minute.
+The window mapping lives only in [`config/window.yaml`](config/window.yaml):
+`metres = closed_position_m + percent / 100 × travel_m` (0.40 m travel).
 
-## Try it yourself
+## The world
+
+`worlds/cabin.sdf`, primitives only: a car on a parent-and-child parking bay.
+Functional parts: the rear-left glass on the prismatic joint
+`window_row2_left_joint` (PID-controlled, ~0.15 m/s, a full stroke takes
+~3 s, no collision), the row-2 seat cushion with a contact sensor, and the
+`child_seat` model that `run.sh seat` moves with `/world/cabin/set_pose`.
+Gazebo Fortress (`ign` CLI, `ignition.msgs`) because it is the release
+paired with ROS 2 Humble, which `ros2-hvac` uses. `ROS_DOMAIN_ID=42` and
+`IGN_PARTITION=guardian_sim` keep it apart from `ros2-hvac` (domain 0).
+
+Inside the container:
 
 ```bash
 docker compose --profile gazebo exec gazebo-sim bash
-source /opt/ros/humble/setup.bash
-
-ros2 topic pub --once /sim/window/row2_left/position_cmd std_msgs/msg/Float64 "{data: 0.10}"   # 25 %
 ros2 topic echo /sim/joint_states --once
-ros2 topic echo /sim/seat/row2/contact          # silent until a child seat is placed
-ign topic -l                                    # Gazebo-side topics
+ros2 topic echo /sim/seat/row2/contact     # silent while the seat is empty
+ign topic -l
 ```
 
-Child seat test object, from the host:
+## Troubleshooting
 
-```bash
-COMPOSE_CMD="docker compose" ./gazebo-sim/child-seat.sh place    # onto the row 2 cushion
-COMPOSE_CMD="docker compose" ./gazebo-sim/child-seat.sh remove   # back onto the ground outside
-```
+| Symptom | Fix |
+|---|---|
+| `permission denied … docker.sock` | `sudo usermod -aG docker $USER`, then log out and in again |
+| Gazebo window black or Ogre errors | `LIBGL_ALWAYS_SOFTWARE=1 ./gazebo-sim/run.sh …` |
+| No Gazebo window | Linux with `DISPLAY` only; macOS/Windows run headless (`--no-gui`) |
+| `Gazebo did not come up` | `./gazebo-sim/run.sh logs` |
+| Closing the Gazebo window stopped the simulation | intended: the launch file stops the container when one process exits; start again |
 
-`child-seat.sh` calls the Fortress UserCommands service
-`/world/cabin/set_pose`; the child seat drops 1 cm onto the cushion and
-rests there. In the GUI you can also drag it with the transform tool.
+## Known limitations
 
-## Smoke test
-
-```bash
-docker compose --profile gazebo up --build -d
-COMPOSE_CMD="docker compose" ./gazebo-sim/test-window.sh
-```
-
-Same style as `ros2-hvac/test-can-e2e.sh`: `COMPOSE_CMD` selects the compose
-command (default `podman-compose`), every check prints `PASS`/`FAIL`, and the
-script exits 1 if any check fails. It checks:
-
-1. container running, `ROS_DOMAIN_ID=42`
-2. Gazebo world up with the explicit topic names
-3. bridged ROS 2 topics exist, `/clock` advances
-4. window setpoints 25 %, 100 % and 0 % reach the mapped joint position on
-   `/sim/joint_states` within ±5 mm (`TOLERANCE_M` overrides) and stay there
-   for 0.5 s
-5. seat contact: no messages with an empty seat, `child_seat` reported after
-   `place`, no messages again within 3 s after `remove`
+- The Guardian never sends "window closed"; use `run.sh window 0` or the
+  dashboard button.
+- In replace mode do not use the dashboard's "Set Child Present/Absent"
+  buttons: they publish on the same topic as the seat sensor. Use
+  `run.sh seat` instead. The window buttons are fine.
+- Cabin temperature is not simulated in Gazebo; `temperature-sim` stays the
+  source.
+- Written for `docker compose`; `podman-compose` is untested.
 
 ## Files
 
 | Path | Purpose |
 |---|---|
-| `Dockerfile` | ROS 2 Humble + Gazebo Fortress image `hack-to-the-future/gazebo-sim:stage-gazebo` |
-| `worlds/cabin.sdf` | the world (template: `@WINDOW_TRAVEL_M@`) |
-| `config/window.yaml` | window percent ↔ joint position mapping |
-| `config/bridge.yaml` | `ros_gz_bridge` topic configuration |
-| `launch/gazebo_sim.launch.py` | renders the world, starts Gazebo and the bridge; stops both if one exits |
-| `compose.gui.yml` | Linux-only GUI override |
-| `config/gui.config` | GUI layout and start camera (GUI mode only) |
-| `demo.sh` | guided demo, watch it in the GUI |
-| `child-seat.sh` | place / remove the child seat test object |
-| `tools/sim_check.py` | ROS 2 checks used by the smoke test |
-| `test-window.sh` | smoke test |
-
-## Image size and build time
-
-Measured on a 4-core / 6 GB Linux laptop (Docker 29):
-
-| | |
-|---|---|
-| Image `hack-to-the-future/gazebo-sim:stage-gazebo` | **2.9 GB** (base `ros:humble-ros-base` 1.17 GB; the rest is Gazebo Fortress with its Ogre/Qt/FFmpeg dependencies). For comparison, `ros2-hvac` is 4.0 GB |
-| Build, `--no-cache`, base image already pulled | **~5 min** (295 s), a single apt layer, so mostly download speed |
-| Runtime, headless | ~1 CPU core (1 ms physics steps in real time), ~110 MB RAM |
-| Runtime, with GUI | ~2+ CPU cores, ~370 MB RAM |
-
-No Rust build is involved, so this image does not slow down the default
-stack's build.
-
-## Known limitations
-
-- **Tested with Docker only.** Verified with Docker 29 / Compose v5 on
-  Linux, headless and with GUI (XWayland, both with `/dev/dri` and with
-  `LIBGL_ALWAYS_SOFTWARE=1`). The scripts follow the repo's `podman-compose`
-  convention but have not been run under Podman yet.
-- **Headless only on macOS/Windows.** The GUI override needs X11 and
-  `/dev/dri` on a Linux host.
-- **Not wired into the Guardian yet.** No Zenoh / uProtocol connection;
-  that is the job of the upcoming ROS 2 ↔ uProtocol bridge.
-- **Window glass has no collision.** It cannot pinch or be blocked; this
-  avoids fighting the door frame and keeps the controller simple.
-- **Simplified dynamics.** The window is position-controlled by a PID
-  (`p=200`, `d=30`) with gravity off on the glass. Joint damping (40 N·s/m)
-  and a force limit (`cmd_max` 6 N) cap it at roughly window-motor speed,
-  ~0.15 m/s (a full stroke takes about 3 s); it settles within ~2 mm of the
-  target and has no end-stop behaviour beyond the joint limits.
-- **Contact sensor is binary in practice.** It reports touching collisions,
-  not weight or occupant class.
-- **Contact messages arrive at physics rate.** Fortress' Contact system
-  ignores `<update_rate>` and publishes every physics step (~1 kHz measured
-  on `/sim/seat/row2/contact`) while the child seat rests on the cushion. The
-  later uProtocol bridge must debounce/throttle this into presence events.
-- **`/sim/window/.../position_cmd` takes metres, not percent.** Percent
-  conversion belongs to the caller (see the mapping above).
-
-## Open points
-
-- ROS 2 ↔ uProtocol bridge: map the window controller's `window_percentage`
-  to `position_cmd`, publish `/sim/joint_states` back as window state, and
-  turn `/sim/seat/row2/contact` into a child-presence VSS event.
-- Decide whether Gazebo should become the window actuator (replacing
-  `window-controller-sim`) or only mirror it.
-- Cabin temperature is not simulated in Gazebo; `temperature-sim` stays the
-  source.
-- Spawning or deleting the child seat (instead of moving one fixed model) via
-  `/world/cabin/create` and `/world/cabin/remove` if multiple occupants are
-  needed.
-- GUI on WSLg is untested.
+| `run.sh` | the one entry point |
+| `Dockerfile` | ROS 2 Humble + Gazebo Fortress + eclipse-zenoh image |
+| `worlds/cabin.sdf` | the world (`@WINDOW_TRAVEL_M@` filled in at start) |
+| `config/window.yaml` | window percent ↔ metres |
+| `config/bridge.yaml` | `ros_gz_bridge` topics |
+| `config/gui.config` | GUI layout and start camera |
+| `launch/gazebo_sim.launch.py` | starts Gazebo, GUI, ros_gz_bridge and the Zenoh bridge |
+| `bridge/ros_zenoh_bridge.py` | ROS side of the bridge |
+| `compose.gui.yml` | Linux GUI override (added by `run.sh`) |
+| `../services/src/bin/gazebo_bridge.rs` | uProtocol side of the bridge |

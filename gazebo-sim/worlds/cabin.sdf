@@ -37,7 +37,7 @@
                          the opening rear-left window is easy to see.
     child_seat      a toddler in a child seat (visual) on a free rigid body;
                     starts on the ground next to the car, moved with
-                    gazebo-sim/child-seat.sh
+                    gazebo-sim/run.sh seat
 
   The functional geometry (floor top z 0.375, seat cushion top z 0.625 at
   x -0.6, window opening x -0.95..-0.05 / z 0.875..1.275, joint and topic
@@ -61,7 +61,7 @@
 
     <plugin filename="ignition-gazebo-physics-system"
             name="ignition::gazebo::systems::Physics"/>
-    <!-- create / remove / set_pose services, used by child-seat.sh -->
+    <!-- create / remove / set_pose services, used by run.sh seat -->
     <plugin filename="ignition-gazebo-user-commands-system"
             name="ignition::gazebo::systems::UserCommands"/>
     <!-- state for the optional GUI client -->
@@ -923,7 +923,7 @@
       Test object: a toddler sitting in a child seat, facing forward (+x).
       Origin at the bottom centre of the seat base. One rigid link: only the
       seat base and backrest collide; the child is visual only. Starts on the
-      ground beside the rear-left door (= absent); child-seat.sh moves it.
+      ground beside the rear-left door (= absent); run.sh seat moves it.
     -->
     <model name="child_seat">
       <pose>-0.6 1.4 0.01 0 0 0</pose>
