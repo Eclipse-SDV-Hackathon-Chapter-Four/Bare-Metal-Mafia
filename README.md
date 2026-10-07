@@ -43,6 +43,18 @@ simulators to embedded targets to real hardware.
 
 ---
 
+## Task Distribution
+
+| # | Member | Task | Note |
+| :--: | --- | --- | --- |
+| 1 | Elias | Overview | Git, backlog |
+| 2 | Lars | Overview | openDuT, AutoSD |
+| 3 | Terra | openDuT, OpenBSW | Working hardware |
+| 4 | Dimitri | openDuT, OpenBSW | Working hardware |
+| 5 | Katharina | Loop features | Software architecture |
+
+---
+
 ## Architecture
 
 ```mermaid
@@ -186,16 +198,6 @@ Ordered by what unblocks the most. Each goal names the stage it serves.
 | 4 | **Strengthen the Guardian decision logic** | bonus | Our differentiator beyond the Definition of Done. See below |
 | 5 | **Leverage the ROS 2 and Muto HVAC path** | Stage 2+ | Already present in `ros2-hvac/`. The work is integration and demonstration, not implementation |
 | 6 | **Build the demo narrative along the five stages** | all | Showing the same `evaluate_state` survive every swap is the pitch |
-
-## task distribution
-
-| # | member | task | note |
-| :--: | --- | :--: | --- |
-| 1 | Elias | overview | gitbacklock |
-| 2 | Lars | overview | openDuT, AutoSD |
-| 3 | Terra | OpenDuT, OpenBWS | working HW |
-| 4 | Dimitri | OpenDuT, OpenBWS | working HW |
-| 5 | Katharina | Loop features | Software Architecture |
 
 ### Guardian logic ideas (goal 4)
 

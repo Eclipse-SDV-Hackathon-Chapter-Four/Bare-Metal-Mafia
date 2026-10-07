@@ -211,6 +211,24 @@ point. **Do not run `temperature-sim` at the same time**, or two sources will
 fight over the cabin temperature; comment it out in `docker-compose.yml` or
 stop it with `docker compose stop temperature-sim`.
 
+### The SOME/IP packet format
+
+Anyone writing firmware for this path sends a 28-byte UDP packet to the bridge
+on port 30501. The layout is defined in `services/src/bin/someip_uprot_bridge.rs`:
+
+| Bytes | Content |
+| --- | --- |
+| 0–1 | Service identifier `0x1234` |
+| 2–3 | Event identifier `0x8001` |
+| 4–7 | Length `0x00000014` |
+| 8–9 | Client identifier `0x0001` |
+| 10–11 | Session counter, increments |
+| 12–13 | Protocol and interface version, both `0x01` |
+| 14 | Message type `0x02` (notification) |
+| 15 | Return code `0x00` |
+| 16–19 | Temperature in °C, 32-bit float, big-endian |
+| 20–27 | Timestamp in milliseconds, 64-bit, big-endian |
+
 To run the sensor on the real STM32F407 emulation (Renode) instead of the
 Linux port, see the comments above `threadx-temp-sensor` in
 `docker-compose.yml`.
