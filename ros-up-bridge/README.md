@@ -63,6 +63,7 @@ only, like `gazebo-sim`.
 | Mode | What Gazebo does | Publishes on uProtocol | Config |
 |---|---|---|---|
 | **mirror** | follows `window-controller-sim`: the rear-left window state drives the Gazebo window joint | **nothing** (enforced when the mapping is loaded) | [`config/mirror.yaml`](config/mirror.yaml), [`compose.mirror.yml`](compose.mirror.yml) |
+| **replace** | **replaces** `window-controller-sim` and `child-presence-sim`: window commands move the Gazebo glass, the window state comes from the joint, child presence from the seat contact sensor | `vss_window_state`, `vss_child_presence` | [`config/replace.yaml`](config/replace.yaml), [`compose.replace.yml`](compose.replace.yml) |
 
 ### mirror
 
@@ -74,6 +75,51 @@ window-controller-sim ── vss_window_state {window_percentage} ──► ros_
 
 The existing chain (Guardian → actuation-adapter → cda-sim →
 window-controller-sim) is untouched; the bridge only subscribes.
+
+### replace
+
+```text
+cda-sim ── uds_window_cmd {percentage} ──► ros_up_mapper ──► Gazebo window joint
+cda-sim ── uds_alarm_cmd {enabled} ─────► ros_up_mapper (alarm_enabled)
+/sim/joint_states ──► ros_up_mapper ── vss_window_state {window_percentage, alarm_enabled, timestamp_ms}
+/sim/seat/row2/contact ──► ros_up_mapper ── vss_child_presence {present, confidence, zone, timestamp_ms}
+```
+
+- **Window**: the mapper consumes exactly what `window-controller-sim`
+  consumed (`uds/window/cmd`, `uds/alarm/cmd`) and publishes the window state
+  with the same JSON schema (`WindowStateEvent`). Like `window-controller-sim`
+  it publishes on start and on every window or alarm command, and it serves
+  `GET /state` (`{window_percentage, alarm_enabled}`) and `GET /health` on
+  port 8092. There are no acks or RPC replies to imitate:
+  `window-controller-sim` never sent any.
+  **Difference**: `window_percentage` is the *measured* joint position, so
+  while the glass moves the state is also published in between. Those
+  intermediate events are throttled: only on a change of at least 1
+  percentage point, at most 5 Hz, and the final value is always published
+  (a change held back by the rate limit goes out as soon as allowed). A
+  window command therefore first reports the old position and then follows
+  the glass. All of this is configured in `replace.yaml`
+  (`publish: on_change / max_rate_hz / coalesce_ms`).
+- **Child presence**: Gazebo publishes contacts only while something touches
+  the row-2 cushion (~1 kHz; the ROS side forwards at most 20 Hz). No
+  contact message for `silence_ms` (300 ms) means "empty"; a change must be
+  stable for `debounce_ms` (400 ms, configurable) before an event is
+  published, plus a heartbeat every `heartbeat_ms` (1 s). `confidence` is
+  fixed at **1.0**: the simulated contact sensor delivers no confidence of its
+  own, and in simulation the contact is ground truth (the simulator used
+  0.97–0.99). `zone` is `rear_center`, as in `child-presence-sim`, and the
+  child seat sits in the middle of the row-2 bench. Any object on the
+  cushion counts as "present".
+- **Switching**: `compose.replace.yml` moves `window-controller-sim` and
+  `child-presence-sim` into the profile `replaced-by-gazebo`, which is never
+  activated, and drops them from the `depends_on` lists of `temperature-sim`
+  and `cda-sim` with `!override`. **This needs Docker Compose ≥ 2.24 and
+  probably does not work with `podman-compose`.** The default stack and
+  every profile are unchanged.
+- **The Guardian does not close the window**: when the child is removed the
+  Guardian goes back to `CLEAR` but sends no "close window" command, so the
+  Gazebo glass stays open. This is existing Guardian behaviour and
+  deliberately not changed.
 
 ## Start
 
@@ -88,7 +134,15 @@ docker compose -f docker-compose.yml -f ros-up-bridge/compose.mirror.yml --profi
 xhost +local:
 docker compose -f docker-compose.yml -f ros-up-bridge/compose.mirror.yml \
   -f gazebo-sim/compose.gui.yml --profile gazebo up --build
+
+# replace, headless (add -f gazebo-sim/compose.gui.yml for the GUI)
+docker compose -f docker-compose.yml -f ros-up-bridge/compose.replace.yml --profile gazebo up --build
+COMPOSE_CMD="docker compose" ./gazebo-sim/child-seat.sh place    # child present -> Guardian MONITORING
+COMPOSE_CMD="docker compose" ./gazebo-sim/child-seat.sh remove
 ```
+
+In replace mode `ros-up-mapper` serves `/health`, `/stats` and `/state` on
+port 8092 (the port of the replaced `window-controller-sim`).
 
 `ros-up-mapper` serves `GET /health` and `GET /stats` (counts per route,
 `uprotocol_published`, `zenoh_published`) on port 8096 in mirror mode.
@@ -141,6 +195,14 @@ http:
   port: 8096                 # /health, /stats
 ```
 
+**Route kinds**
+
+| `kind` | Keys | Behaviour |
+|---|---|---|
+| `forward` | `from`, `to`, `fields`, `repeat_last_ms` | one output per input message |
+| `state` | `inputs`, `initial`, `publish`, `to`, `fields`, `http` | keeps a state object; each input has a `name`, `from`, optional `set:` (state fields from that input, FieldSpecs) and `publish: true` (publish whenever it arrives). `publish:` has `on_start`, `on_change` (field → `{min_delta}`; publish when it differs that much from the last published value), `max_rate_hz` (a held-back change is published as soon as allowed, so the final value always goes out) and `coalesce_ms` (a burst becomes one event). Output `fields` read the state with `{state: <field>}`. `http: {path, fields}` serves the state on the mapper's HTTP port |
+| `presence` | `from`, `silence_ms`, `debounce_ms`, `heartbeat_ms`, `to`, `fields` | for "activity" streams (messages only while something is detected): no input for `silence_ms` → absent; a change must last `debounce_ms`; published on change plus every `heartbeat_ms`; `{state: present}` is the boolean |
+
 **`repeat_last_ms`** re-sends the last output periodically. It is allowed
 only for outputs to a ROS link (an idempotent setpoint); on uProtocol a
 repeat would be a duplicate event, so the mapper rejects it there.
@@ -187,6 +249,16 @@ COMPOSE_CMD="docker compose" ./ros-up-bridge/check-single-publisher.sh \
 
 In mirror mode the mapper has no uProtocol outputs at all.
 
+**At runtime** uProtocol publish events carry the topic as their source, not
+the publisher, so a second publisher cannot be recognised by its address.
+`ros_up_mapper` therefore subscribes to every topic it publishes and keeps
+a hash of each payload it sent; any other payload on that topic came from a
+second publisher. By default it logs an error (`SECOND PUBLISHER on ...`),
+reports `GET /health` as `503 unhealthy`, counts the event in `/stats`
+(`foreign_publisher_events`) and keeps running. With
+`ROS_UP_STRICT_SINGLE_PUBLISHER=1` it exits with code 1 instead; the tests
+use the strict mode.
+
 ## Tests
 
 ```bash
@@ -208,7 +280,37 @@ what `window-controller-sim` reports over HTTP, the test prints a `WARN`
 line naming the publish race described below. `KEEP=1` leaves the stack
 running, `BUILD=1` rebuilds.
 
-Unit tests of the mapping engine: `cargo test --bin ros_up_mapper`.
+```bash
+COMPOSE_CMD="docker compose" ./ros-up-bridge/test-replace.sh                  # headless
+COMPOSE_CMD="docker compose" GUI=1 ./ros-up-bridge/test-replace.sh            # with GUI
+COMPOSE_CMD="docker compose" BREAK=foreign ./ros-up-bridge/test-replace.sh    # negative check, must FAIL
+```
+
+`test-replace.sh` (re)starts the stack with the mapper in strict mode and
+holds `temperature-sim` back so the Guardian's states come in a fixed order:
+
+1. static check: PASS for replace, and FAIL (as expected) when the replaced
+   simulators are re-enabled with `--profile replaced-by-gazebo`
+2. `window-controller-sim` and `child-presence-sim` are not running; empty
+   seat → Guardian `CLEAR`
+3. child seat placed in Gazebo → `MONITORING`
+4. `temperature-sim` started → `WARNING` → `CRITICAL` → `MITIGATING`
+5. stage-2 mitigation: the mapper's `/state` reports 25 % (from the joint),
+   the Gazebo joint is at 0.10 m ±5 mm, `alarm_enabled` is true, and the
+   dashboard (a uProtocol subscriber) shows 25 %
+6. the window state events while the glass moved (read from the mapper's
+   debug log): intermediate values, ≥ 1 point and ≥ 200 ms apart, final 25 %
+7. child seat removed → `CLEAR`
+8. one publisher per topic at runtime: the replaced simulators are not
+   running, the strict mapper is still running, `foreign_publisher_events`
+   is 0, `/health` is ok
+
+`BREAK=foreign` starts `window-controller-sim` as a second publisher; the
+strict mapper exits on its first message and the test fails with exit
+code 1.
+
+Unit tests of the mapping engine: `cargo test --bin ros_up_mapper` (11
+tests, including loading both shipped mapping files).
 
 ## Versions
 
@@ -277,7 +379,10 @@ bus) but may print the `WARN` line.
   uProtocol message IDs only order to the millisecond. Publishers of state
   should not publish bursts (see the window-controller-sim fix above).
 - **Compose and Podman**: tested with Docker Compose v5 only; not run under
-  `podman-compose`.
+  `podman-compose`. `compose.replace.yml` uses `!override` (Compose ≥ 2.24),
+  which `podman-compose` probably does not support.
+- **Window state in replace mode** reflects the measured glass position, so
+  a command is first answered with the old position (see "replace").
 - **The Guardian does not close the window**: when it returns to `CLEAR` it
   sends no "window closed" command, so the window (and the Gazebo glass)
   stays where the last mitigation put it. This is existing Guardian
@@ -290,7 +395,7 @@ bus) but may print the `WARN` line.
 | `ros_side/ros_zenoh_bridge.py` | ROS side (in the gazebo-sim image) |
 | `../services/src/bin/ros_up_mapper/` | uProtocol side (Rust) |
 | `Dockerfile` | `hack-to-the-future/ros-up-mapper:stage-bridge` |
-| `config/mirror.yaml` | mapping, mode mirror |
-| `compose.mirror.yml` | compose override, mode mirror |
+| `config/mirror.yaml`, `config/replace.yaml` | mappings |
+| `compose.mirror.yml`, `compose.replace.yml` | compose overrides |
 | `check-single-publisher.sh` | static single-publisher check |
-| `test-mirror.sh` | end-to-end test, mode mirror |
+| `test-mirror.sh`, `test-replace.sh` | end-to-end tests |
