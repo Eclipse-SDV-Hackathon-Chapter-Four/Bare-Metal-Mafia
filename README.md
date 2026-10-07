@@ -141,6 +141,7 @@ Ordered by what unblocks the most. Each goal names the stage it serves.
 | **OpenBSW Window Controller** | `services/src/bin/window_controller_sim.rs` | Done, simulated |
 | **ROS 2 HVAC workload**, Eclipse Muto with CAN bridge | `ros2-hvac/`, `services/src/bin/ros2_hvac_bridge.rs` | Done |
 | **Dashboard**, live one-page view | `services/src/bin/dashboard.rs`, port 8094 | Done |
+| **Gazebo cabin simulation**, Fortress world (window joint, seat contact) and `ros_gz_bridge`, profile `gazebo`, laptops only | `gazebo-sim/` | Step 1 done, **our own work** (not from the reference stack). Not yet bridged to uProtocol |
 | **AutoSD HPC deployment** | `deploy/` | Open |
 | **openDuT topology** | — | Open |
 | **eCall / Notification service** | — | Open, optional |
@@ -174,6 +175,7 @@ Optional profiles:
 ```bash
 docker compose --profile ros2 up --build      # adds ROS 2 HVAC via Eclipse Muto
 docker compose --profile threadx up --build   # adds the ThreadX sensor over SOME/IP
+docker compose --profile gazebo up --build    # adds the Gazebo cabin simulation (see gazebo-sim/README.md)
 ```
 
 The full walkthrough is in [docs/Tutorial.md](docs/Tutorial.md).
