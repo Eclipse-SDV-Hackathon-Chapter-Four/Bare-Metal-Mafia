@@ -8,16 +8,18 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use guardian_sil::{
     az3166_imu_uri, decode_json_payload, hvac_state_uri, make_uri_provider, open_up_transport,
-    s32_window_position_uri, vss_cabin_temperature_uri, vss_child_presence_uri,
-    vss_guardian_state_uri, vss_window_state_uri, Az3166ImuEvent, CabinTemperatureEvent,
-    ChildPresenceEvent, GuardianSnapshot, HvacStateEvent, S32WindowPositionEvent, WindowStateEvent,
+    publish_json_event, s32_window_position_uri, vss_cabin_temperature_uri,
+    vss_child_presence_uri, vss_guardian_state_uri, vss_window_state_uri, Az3166ImuEvent,
+    CabinTemperatureEvent, ChildPresenceEvent, GuardianSnapshot, HvacStateEvent,
+    S32WindowPositionEvent, WindowStateEvent,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tracing::{info, warn};
-use up_rust::{UListener, UMessage};
+use up_rust::{UListener, UMessage, UTransport};
 
 #[derive(Debug, Clone, Serialize)]
 struct DashboardSnapshot {
@@ -50,11 +52,17 @@ struct AppState {
     medkit_faults_url: String,
     hvac_fault_control_url: String,
     http: reqwest::Client,
+    transport: Arc<dyn UTransport>,
 }
 
 #[derive(Debug, Deserialize)]
 struct FaultToggleRequest {
     fault_active: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChildPresenceToggleRequest {
+    present: bool,
 }
 
 struct ChildPresenceListener {
@@ -183,6 +191,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = format!("{}:{}", host, port);
     let snapshot = Arc::new(Mutex::new(DashboardSnapshot::new()));
 
+    let uri_provider = make_uri_provider("guardian-dashboard", 0x9601, 0x01);
+    let transport = open_up_transport(uri_provider).await?;
+
     let app_state = AppState {
         snapshot: snapshot.clone(),
         medkit_faults_url: std::env::var("MEDKIT_FAULTS_URL")
@@ -190,10 +201,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         hvac_fault_control_url: std::env::var("HVAC_FAULT_CONTROL_URL")
             .unwrap_or_else(|_| "http://ros2-hvac:8093/api/fault".to_string()),
         http: reqwest::Client::builder().build()?,
+        transport: transport.clone(),
     };
-
-    let uri_provider = make_uri_provider("guardian-dashboard", 0x9601, 0x01);
-    let transport = open_up_transport(uri_provider).await?;
 
     transport
         .register_listener(
@@ -269,6 +278,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/state", get(get_state))
         .route("/api/faults", get(get_faults))
         .route("/api/hvac/fault", post(set_hvac_fault))
+        .route("/api/child-presence", post(set_child_presence))
         .with_state(app_state);
 
     let listener = TcpListener::bind(&addr).await?;
@@ -348,6 +358,34 @@ async fn set_hvac_fault(
         .map_err(|err| (StatusCode::BAD_GATEWAY, err.to_string()))?;
 
     Ok(Json(body))
+}
+
+/// Publishes a ChildPresenceEvent over uProtocol - a real publish, not an
+/// HTTP proxy like set_hvac_fault above, since there's no external HTTP
+/// service for child presence (child-presence-sim publishes the same
+/// topic directly). When this binary runs on the Raspberry Pi host
+/// (ZENOH_CONNECT pointed at the AutoSD VM's zenohd via its hostfwd
+/// port), this click crosses from the Pi straight into the VM's Guardian
+/// over uProtocol, same pattern as az3166_serial_bridge.
+async fn set_child_presence(
+    State(app): State<AppState>,
+    Json(payload): Json<ChildPresenceToggleRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let event = ChildPresenceEvent {
+        present: payload.present,
+        confidence: 1.0,
+        zone: Some("dashboard-injected".to_string()),
+        timestamp_ms: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0),
+    };
+
+    publish_json_event(app.transport.clone(), vss_child_presence_uri(), &event)
+        .await
+        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+
+    Ok(Json(json!({ "present": payload.present })))
 }
 
 const INDEX_HTML: &str = r#"<!doctype html>
@@ -522,6 +560,10 @@ const INDEX_HTML: &str = r#"<!doctype html>
         <div class="eyebrow">Child Presence</div>
         <div class="value" id="childPresence">--</div>
         <div class="meta" id="childMeta">Waiting for child presence event.</div>
+        <div class="actions">
+          <button class="fault-on" onclick="toggleChildPresence(true)">Set Child Present</button>
+          <button class="fault-off" onclick="toggleChildPresence(false)">Set Child Absent</button>
+        </div>
       </section>
       <section>
         <div class="eyebrow">Window</div>
@@ -640,6 +682,15 @@ const INDEX_HTML: &str = r#"<!doctype html>
       });
       await refreshState();
       await refreshFaults();
+    }
+
+    async function toggleChildPresence(present) {
+      await fetch('/api/child-presence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ present })
+      });
+      await refreshState();
     }
 
     refreshState();
