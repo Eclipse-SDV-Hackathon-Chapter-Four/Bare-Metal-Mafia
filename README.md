@@ -4,11 +4,7 @@
 
 ### Guardian Loop — portable child presence detection
 
-**One feature. One codebase. Simulation, AutoSD, real hardware.**
-
 *Eclipse SDV Hackathon 2026 · [Hack to the Future](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/Hack-to-the-Future) challenge*
-
-**Stage 1** done · **Stage 2** done · **Stage 3** open · **Stage 4** partial · **Stage 5** open
 
 </div>
 
@@ -18,28 +14,98 @@
 
 Build a **Child Presence Detection and Mitigation** feature that:
 
-1. detects that a child is in the car,
-2. monitors cabin temperature,
-3. determines a hazard level,
-4. warns and intervenes (HVAC, windows, alarm, eCall),
+- detects a child in the car,
+- monitors the cabin temperature,
+- decides how dangerous the situation is,
+- warns and acts (air conditioning, windows, alarm).
 
-and keeps working unchanged while the world underneath it is swapped from
-simulators to embedded targets to real hardware.
+The feature must keep working unchanged while the hardware underneath it is swapped.
 
-> ### The Golden Rule
+> ### The one rule
 >
-> **The Guardian Loop business logic must not change between simulation and real hardware.**
+> **The Guardian Loop logic must not change between simulation and real hardware.**
 >
-> The Guardian therefore never addresses any of the following directly:
+> The Guardian therefore never talks directly to:
+> CAN, GPIO, serial ports, UDS, DoIP, SOME/IP, device paths or hardware addresses.
+> It only uses uProtocol service interfaces.
 >
-> | Forbidden inside Guardian | Use instead |
-> | --- | --- |
-> | CAN, GPIO, serial ports | uProtocol pub/sub on VSS topics |
-> | UDS, DoIP, ECU DIDs | uProtocol RPC to the Actuation Adapter, then CDA |
-> | SOME/IP | a SOME/IP to uProtocol bridge service |
-> | Hardware addresses, device paths | service URIs only |
->
-> If swapping a sensor or an actuator forces a change to `guardian.rs`, the design is wrong.
+> If swapping a sensor forces a change in `guardian.rs`, the design is wrong.
+
+### Our current goal
+
+**Get the temperature sensor onto real hardware, with the Guardian Loop still running on a laptop.**
+
+- This is Configuration B in [docs/Guardian-loop.md](docs/Guardian-loop.md): real sensor, simulated window.
+- **openDuT is not needed for this.** It is only needed later, to *switch* between the simulated and the real sensor.
+- The window actuator and OpenBSW stay simulated for now.
+
+---
+
+## Task Distribution
+
+| # | Member | Task | Note |
+| :--: | --- | --- | --- |
+| 1 | Elias | Overview | Git, backlog |
+| 2 | Lars | Overview | openDuT, AutoSD |
+| 3 | Terra | openDuT, OpenBSW | Working hardware |
+| 4 | Dimitri | openDuT, OpenBSW | Working hardware |
+| 5 | Katharina | Loop features | Software architecture |
+
+**When someone is free:** get the temperature sensor running on the AZ3166 board
+(HTS221 for temperature and humidity, or LPS22HB for temperature and pressure).
+
+> The sensor firmware is the critical path for our current goal.
+> At least one person from the hardware pair should move over to it.
+
+---
+
+## Next Steps
+
+In this order. Each step only makes sense if the one before it works.
+
+1. **Prove the existing path.** Run `docker compose --profile threadx up --build`, then stop `temperature-sim` so two sources do not fight over the Guardian. This is the known-good baseline.
+2. **Send the packet by hand.** A short Python script that sends the 28-byte packet to UDP port 30501. Proves the bridge, the port and the firewall without any firmware involved.
+3. **Flash the board.** Start from the [AZ3166 ThreadX example](https://github.com/chheis/challenge-threadx-playRemote/blob/4f9cac54efcd383f1cadcedb4aa3c93a97ba9dd0/MXChip/AZ3166/app/main.c#L770), read the sensor, send the same packet to the laptop. Do **not** build a board support package inside `threadx-temp-sensor/`.
+4. **Make the thresholds configurable.** See Known Problems.
+5. **Add openDuT** to switch between the simulator and the board. Only now does it have something to switch.
+
+### The packet format
+
+Sent by UDP to the bridge on port 30501. Defined in `services/src/bin/someip_uprot_bridge.rs`.
+
+| Bytes | Content |
+| --- | --- |
+| 0–1 | Service identifier `0x1234` |
+| 2–3 | Event identifier `0x8001` |
+| 4–7 | Length `0x00000014` |
+| 8–9 | Client identifier `0x0001` |
+| 10–11 | Session counter, increments |
+| 12–13 | Protocol and interface version, both `0x01` |
+| 14 | Message type `0x02` (notification) |
+| 15 | Return code `0x00` |
+| 16–19 | Temperature in °C, 32-bit float, big-endian |
+| 20–27 | Timestamp in milliseconds, 64-bit, big-endian |
+
+---
+
+## What We Need
+
+- **One MXChip AZ3166 board.** One is enough for the current goal, so do not wait for more.
+- **A micro-USB data cable.** Charge-only cables waste hours.
+- **A 2.4 GHz Wi-Fi network** the laptop is also on. The board cannot do 5 GHz. A phone hotspot avoids company network restrictions.
+- **Something to heat the sensor** for the demo: a hair dryer, a hand, a warm mug.
+- **An ST-LINK probe**, only if we need to step through the firmware. Flashing works over USB.
+
+---
+
+## Known Problems
+
+- **The ThreadX sensor does not measure anything.** `threadx-temp-sensor/` computes the temperature from a formula. Treat it as the definition of the message format, not as firmware.
+- **The firmware cannot be flashed today.** No linker script, no startup code, no board support package. The build targets an STM32F407, the AZ3166 is an STM32F412.
+- **The board has no Ethernet.** The Renode emulation pretends it has one. The real board needs Wi-Fi, so the emulation is not a rehearsal for the hardware.
+- **The board cannot resolve `someip-uprot-bridge`.** That is a Docker name. The firmware needs the laptop's numeric IP address.
+- **The Windows firewall drops incoming UDP silently.** Open port 30501 before debugging firmware.
+- **A real sensor never reaches 43 °C.** The thresholds are hardcoded in `services/src/lib.rs:281`. Editing them by hand breaks our own rule. Make them environment variables with the current values as defaults, which is a configuration change rather than a logic change.
 
 ---
 
@@ -49,14 +115,12 @@ simulators to embedded targets to real hardware.
 flowchart LR
     subgraph SENSE["Sense"]
         CPS["Child Presence<br/>(sim)"]
-        TMP["Temperature<br/>(sim / AZ3166 ThreadX)"]
+        TMP["Temperature<br/>(sim / AZ3166)"]
     end
 
     subgraph HPC["AutoSD HPC"]
         GL["<b>Guardian Loop</b><br/>CLEAR → MONITORING →<br/>WARNING → CRITICAL →<br/>MITIGATING"]
         AA["Actuation Adapter"]
-        EC["eCall / Notification<br/>(optional)"]
-        LOG["Logging / Diagnostics"]
     end
 
     subgraph ACT["Actuate"]
@@ -65,128 +129,62 @@ flowchart LR
         HVAC["ROS 2 HVAC<br/>(Eclipse Muto)"]
     end
 
-    CPS -->|"uProtocol pub/sub<br/>VSS events"| GL
-    TMP -->|"uProtocol pub/sub<br/>(SOME/IP bridge)"| GL
-    GL -->|"uProtocol RPC"| AA
-    GL -.-> EC
-    GL -.-> LOG
-    AA -->|"diag commands"| CDA
-    AA -->|"setpoints"| HVAC
-    CDA -->|"UDS-style"| WIN
+    CPS -->|"pub/sub"| GL
+    TMP -->|"pub/sub via SOME/IP bridge"| GL
+    GL -->|"RPC"| AA
+    AA --> CDA
+    AA --> HVAC
+    CDA --> WIN
 ```
 
-**Transport:** every uProtocol message passes through an Eclipse Zenoh router.
-No service knows where any other service runs, and that is what makes the swap possible.
-
-### Communication patterns
-
-| Pattern | Use it for | Example |
-| --- | --- | --- |
-| **uProtocol pub/sub** | sensor data and state broadcasts: fire and forget, many listeners | temperature event, child-presence event, Guardian state |
-| **uProtocol RPC** | one service asking another to perform an operation and awaiting the result | Guardian to Actuation Adapter: HVAC on, 18 °C, fan 100 %, close window |
+- Every message goes through an Eclipse Zenoh router. No service knows where another one runs.
+- **Publish and subscribe** for sensor data and state broadcasts.
+- **Remote procedure call** when the Guardian asks another service to do something and wants an answer.
 
 ---
 
-## Development Journey
+## Where We Stand
 
-The official challenge progression, and where we stand:
+| Stage | Objective | Status |
+| :--: | --- | --- |
+| **1** | Guardian Loop on the laptop, simulated sensors | **Done** |
+| **2** | Simulated actuation: Actuation Adapter, CDA, window controller | **Done** |
+| **3** | Guardian on AutoSD | **Open**, `deploy/` is empty |
+| **4** | Real temperature sensor on the AZ3166 | **In progress**, our current goal |
+| **5** | Real actuator, openDuT switches topologies | **Open** |
 
-| Stage | Objective | Status | Notes |
-| :--: | --- | --- | --- |
-| **1** | **Guardian Loop on your laptop.** Simulated sensors publish over uProtocol, Guardian shows state transitions | **Done** | Inherited from the reference stack. `docker compose up` shows the full escalation in about 30 s |
-| **2** | **Add simulated actuation.** uProtocol RPC to Actuation Adapter, CDA, window controller | **Done** | The SIL loop is closed end to end. The ROS 2 HVAC path is wired up as well |
-| **3** | **Run Guardian on AutoSD.** Same artifact, only deployment and configuration change | **Open** | `deploy/` is still empty. This is our largest gap |
-| **4** | **Replace the temperature simulator.** AZ3166 with Eclipse ThreadX over SOME/IP | **Partial** | Firmware, Renode emulation and the SOME/IP bridge exist. The physical board does not |
-| **5** | **Replace the simulated actuator.** openDuT switches to OpenBSW or physical targets | **Open** | Not started. Requires an openDuT testbench topology |
+Still missing for the full challenge:
 
----
-
-## Our Goals
-
-Ordered by what unblocks the most. Each goal names the stage it serves.
-
-| # | Goal | Serves | Rationale |
-| :--: | --- | :--: | --- |
-| 1 | **Get openDuT running as our testbench** | Stage 5 | Prerequisite for any hardware-swap demo. It must switch between at least two topologies, fully simulated and with a real endpoint |
-| 2 | **Deploy Guardian on the AutoSD HPC** | Stage 3 | Full-challenge requirement and currently untouched. The proof point is an identical service artifact before and after |
-| 3 | **Move the sensors to real hardware** | Stage 4 | AZ3166 with ThreadX replaces `temperature-sim`, and Guardian must not notice |
-| 4 | **Strengthen the Guardian decision logic** | bonus | Our differentiator beyond the Definition of Done. See below |
-| 5 | **Leverage the ROS 2 and Muto HVAC path** | Stage 2+ | Already present in `ros2-hvac/`. The work is integration and demonstration, not implementation |
-| 6 | **Build the demo narrative along the five stages** | all | Showing the same `evaluate_state` survive every swap is the pitch |
-
-## task distribution
-
-| # | member | task | note |
-| :--: | --- | :--: | --- |
-| 1 | Elias | overview | gitbacklock |
-| 2 | Lars | overview | openDuT, AutoSD |
-| 3 | Terra | OpenDuT, OpenBWS | working HW |
-| 4 | Dimitri | OpenDuT, OpenBWS | working HW |
-| 5 | Katharina | Loop features | Software Architecture |
-
-### Guardian logic ideas (goal 4)
-
-- **Rate of change.** A cabin heating at 0.5 °C/s is an emergency long before it crosses 40 °C.
-- **Sensor confidence.** The child-presence event already carries a confidence field, 0.98 in the simulator, and we currently ignore it. Use it to gate escalation.
-- **Redundant sensors.** Fuse several temperature sources and degrade gracefully when one drops out.
-- **Fault tolerance.** The stack already demonstrates an HVAC fault forcing escalation to window and alarm. Generalise that behaviour.
-
-> All of this stays inside `evaluate_state` in `services/src/lib.rs`, and none of it may
-> introduce a transport or hardware dependency. See the Golden Rule.
-
----
-
-## Building Blocks
-
-| Block | Location | Status |
-| --- | --- | --- |
-| **Guardian Loop**, hazard state machine | `services/src/bin/guardian.rs`, logic in `services/src/lib.rs` | Done |
-| **Child Presence Sensor**, simulated | `services/src/bin/child_presence_sim.rs` | Done, simulated |
-| **Temperature Sensor**, simulated with closed-loop thermal model | `services/src/bin/temperature_sim.rs` | Done, simulated |
-| **Temperature Sensor**, ThreadX firmware | `threadx-temp-sensor/` (Renode) | Partial, emulated |
-| **Temperature Sensor**, AZ3166 hardware | — | Open, board missing |
-| **SOME/IP to uProtocol bridges** | `someip_uprot_bridge.rs`, `someip_window_bridge.rs` | Done |
-| **Actuation Adapter**, uProtocol RPC to diagnostics | `services/src/bin/actuation_adapter.rs` | Done |
-| **OpenSOVD CDA**, diagnostic bridge | `services/src/bin/cda_sim.rs` | Done, simulated |
-| **OpenBSW Window Controller** | `services/src/bin/window_controller_sim.rs` | Done, simulated |
-| **ROS 2 HVAC workload**, Eclipse Muto with CAN bridge | `ros2-hvac/`, `services/src/bin/ros2_hvac_bridge.rs` | Done |
-| **Dashboard**, live one-page view | `services/src/bin/dashboard.rs`, port 8094 | Done |
-| **AutoSD HPC deployment** | `deploy/` | Open |
-| **openDuT topology** | — | Open |
-| **eCall / Notification service** | — | Open, optional |
-
-> Nothing here is written from scratch. The challenge is integration and portability
-> rather than reimplementation; the end-to-end SDV architecture is the point.
+- [ ] Guardian running on AutoSD
+- [ ] openDuT manages the topology change
+- [ ] One physical endpoint (AZ3166)
+- [ ] Identical service artifacts before and after the swap
 
 ---
 
 ## Quick Start
 
 ```bash
-docker compose up --build          # full SIL stack
+docker compose up --build                     # full software stack
+docker compose --profile threadx up --build   # with the SOME/IP sensor path
+docker compose --profile ros2 up --build      # with the ROS 2 air conditioning
 ```
 
-Then open the dashboard at <http://localhost:8094>.
+Dashboard: <http://localhost:8094>
 
-The simulators run a scripted scenario at start-up, so every Guardian state appears
-within roughly 30 seconds:
+The simulators run a fixed scenario at start-up, so every Guardian state appears within
+about 30 seconds: `CLEAR` → `MONITORING` → `WARNING` → `CRITICAL` → `MITIGATING`.
 
-| Time | Event | Guardian state |
-| :--: | --- | --- |
-| ~1 s | 26 °C, no child | `CLEAR` |
-| ~5 s | child present, confidence 0.98, zone `rear_center` | `MONITORING` |
-| ~5 s | 36 °C | `WARNING` |
-| ~9 s | 43 °C | `CRITICAL`, then `MITIGATING`: HVAC on, 18 °C, fan 100 % |
-| +12 s | HVAC never confirms | `MITIGATING` stage 2: window 25 %, alarm |
+---
 
-Optional profiles:
+## Guardian Logic Ideas
 
-```bash
-docker compose --profile ros2 up --build      # adds ROS 2 HVAC via Eclipse Muto
-docker compose --profile threadx up --build   # adds the ThreadX sensor over SOME/IP
-```
+Improvements that stay inside `evaluate_state` and add no hardware dependency:
 
-The full walkthrough is in [docs/Tutorial.md](docs/Tutorial.md).
+- **Rate of change.** A cabin heating at 0.5 °C per second is an emergency long before it reaches 40 °C.
+- **Sensor confidence.** The child-presence event already carries a confidence value, 0.98 in the simulator, and we ignore it. Use it to gate escalation.
+- **Redundant sensors.** Combine several temperature sources and keep working when one drops out.
+- **Fault tolerance.** The stack already shows an air conditioning fault forcing escalation to window and alarm. Generalise that.
 
 ---
 
@@ -194,37 +192,6 @@ The full walkthrough is in [docs/Tutorial.md](docs/Tutorial.md).
 
 | Document | Read it when |
 | --- | --- |
-| [docs/Tutorial.md](docs/Tutorial.md) | You want the stack running and explained service by service |
-| [docs/Guardian-loop.md](docs/Guardian-loop.md) | You are building a component and need to know which existing project to copy from |
+| [docs/Tutorial.md](docs/Tutorial.md) | You want the stack running and explained |
+| [docs/Guardian-loop.md](docs/Guardian-loop.md) | You need to know which existing project to copy from |
 | [docs/structure.drawio](docs/structure.drawio) | You need the editable architecture diagram |
-
----
-
-## Open Dependencies
-
-- **More AZ3166 boards.** Blocks Stage 4 on real hardware.
-- **openDuT testbench access.** Blocks Stage 5.
-- Renode keeps the ThreadX path moving while boards are unavailable.
-
----
-
-## Definition of Done
-
-**Core challenge**
-
-- [x] Sensor data reaches the Guardian
-- [x] Communication exclusively via service interfaces
-- [x] Guardian evaluates risk and exposes its state on `:8080/state`
-- [x] Guardian can trigger a mitigation action
-- [x] Simulated ECU and actuator integration
-- [x] uProtocol pub/sub implemented
-- [x] uProtocol RPC implemented
-- [x] Guardian operates transport-independently
-- [ ] An endpoint is replaced without touching the business logic, and we demonstrate it
-
-**Full challenge**
-
-- [ ] Guardian running on AutoSD
-- [ ] openDuT manages the topology change
-- [ ] At least one physical embedded endpoint (AZ3166 with ThreadX)
-- [ ] Identical service artifacts before and after the configuration change
