@@ -39,15 +39,22 @@
 #
 # USAGE
 #   ./setup-raspi-guardian-node.sh [--local-ip 192.168.0.1] [--prefix 24] \
-#       [--no-s32k148] [--no-az3166]
+#       [--automotive-iface eth1] [--no-s32k148] [--no-az3166]
 #
-#   --local-ip     Static IP to assign on the automotive Ethernet interface.
-#   --prefix       Subnet prefix length (default: 24).
-#   --no-s32k148   Skip the S32K148 DoIP bridge profile (just run the base
-#                  simulated stack, e.g. if the hardware isn't plugged in
-#                  yet).
-#   --no-az3166    Skip the AZ3166 ThreadX sensor bridge profile (e.g. if
-#                  the board isn't plugged in yet).
+#   --local-ip         Static IP to assign on the automotive Ethernet interface.
+#   --prefix           Subnet prefix length (default: 24).
+#   --automotive-iface Name of the automotive Ethernet USB adapter (e.g. eth1).
+#                       Required once there are TWO USB-Ethernet adapters
+#                       plugged in (automotive + a second one just for normal
+#                       LAN access) - with only one extra interface besides
+#                       onboard eth0, auto-detection still works and this can
+#                       be omitted. Run `ip -o link show up` to see interface
+#                       names if unsure.
+#   --no-s32k148        Skip the S32K148 DoIP bridge profile (just run the base
+#                       simulated stack, e.g. if the hardware isn't plugged in
+#                       yet).
+#   --no-az3166         Skip the AZ3166 ThreadX sensor bridge profile (e.g. if
+#                       the board isn't plugged in yet).
 #
 # PREREQUISITES (physical, before running this)
 #   - TJA1101 daughterboard jumper removed (Master mode)
@@ -68,6 +75,7 @@ REPO_URL="https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/Bare-Metal-Mafia
 REPO_DIR="$HOME/Bare-Metal-Mafia"
 LOCAL_IP="192.168.0.1"
 PREFIX="24"
+AUTOMOTIVE_IFACE=""
 RUN_S32K148=1
 RUN_AZ3166=1
 
@@ -84,8 +92,9 @@ err()  { echo -e "${RED}[ERROR]${NC} $1"; }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --local-ip)    LOCAL_IP="$2"; shift 2 ;;
-        --prefix)      PREFIX="$2"; shift 2 ;;
+        --local-ip)         LOCAL_IP="$2"; shift 2 ;;
+        --prefix)           PREFIX="$2"; shift 2 ;;
+        --automotive-iface) AUTOMOTIVE_IFACE="$2"; shift 2 ;;
         --no-s32k148)  RUN_S32K148=0; shift ;;
         --no-az3166)   RUN_AZ3166=0; shift ;;
         -h|--help)
@@ -128,13 +137,29 @@ ok "Repository ready at $REPO_DIR"
 # --- 3. Configure the automotive Ethernet interface ----------------------------
 step "Automotive Ethernet interface"
 IFACE=""
+CANDIDATES=()
 for candidate in $(ip -o link show up | awk -F': ' '{print $2}'); do
     case "$candidate" in
         lo|wl*|docker*|veth*|br-*|eth0) continue ;;  # eth0 is usually the Pi's onboard/LAN port, not our USB adapter
     esac
-    IFACE="$candidate"
-    break
+    CANDIDATES+=("$candidate")
 done
+
+if [[ -n "$AUTOMOTIVE_IFACE" ]]; then
+    IFACE="$AUTOMOTIVE_IFACE"
+elif [[ ${#CANDIDATES[@]} -eq 1 ]]; then
+    IFACE="${CANDIDATES[0]}"
+elif [[ ${#CANDIDATES[@]} -gt 1 ]]; then
+    # Two or more non-onboard interfaces up (e.g. automotive adapter + a
+    # second USB-Ethernet dongle just for normal LAN access) - guessing
+    # wrong here would slap the automotive 192.168.0.1/24 static IP onto
+    # the team's actual LAN uplink and knock the Pi off the network
+    # entirely, so refuse to guess. Pick explicitly with --automotive-iface.
+    err "Multiple non-onboard network interfaces are up: ${CANDIDATES[*]}"
+    err "Can't safely guess which one is the automotive Ethernet adapter."
+    err "Re-run with --automotive-iface <name>, e.g. --automotive-iface ${CANDIDATES[0]}"
+    exit 1
+fi
 
 if [[ -z "$IFACE" ]]; then
     warn "Could not auto-detect the automotive Ethernet USB adapter (nothing plugged in yet?)."
@@ -200,9 +225,21 @@ fi
 
 # --- 6. Print access info ---------------------------------------------------------
 step "Access"
-PI_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+# `hostname -I` lists every IP on every interface, including the automotive
+# adapter's static $LOCAL_IP - filter that one out so the team doesn't get
+# pointed at an isolated point-to-point link instead of the real LAN IP.
+# If more than one address remains (e.g. both onboard Ethernet and the LAN
+# USB dongle are up), print all of them rather than silently picking one.
+LAN_IPS=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -v "^${LOCAL_IP}$" | grep -v '^$')
+if [[ -z "$LAN_IPS" ]]; then
+    warn "Could not determine a non-automotive LAN IP - check 'ip -4 a' manually."
+    LAN_IPS="<this-pi-ip>"
+fi
 echo "Dashboard (share this with the team):"
-echo "  http://${PI_IP:-<this-pi-ip>}:8094"
+while IFS= read -r ip; do
+    echo "  http://$ip:8094"
+done <<< "$LAN_IPS"
+PI_IP=$(echo "$LAN_IPS" | head -1)
 echo ""
 echo "Other endpoints:"
 echo "  Guardian state:         http://${PI_IP:-<pi-ip>}:8080/state"
