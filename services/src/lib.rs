@@ -321,11 +321,9 @@ pub fn evaluate_state(child_present: bool, temperature_celsius: f32, ews_warn: b
     }
 
     if temperature_celsius >= 28.5 {
-        GuardianState::Critical
+        return GuardianState::Critical;
     } else if temperature_celsius >= 25.0 {
-        GuardianState::Warning
-    } else {
-        GuardianState::Monitoring
+        return GuardianState::Warning;
     }
 
     if ews_warn {
