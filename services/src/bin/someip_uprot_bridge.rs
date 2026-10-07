@@ -155,6 +155,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             temperature_celsius: temperature,
                             timestamp_ms,
                             sensor_status: SensorStatus::Ok,
+                            sensor_id: 3,
                         };
 
                         info!(

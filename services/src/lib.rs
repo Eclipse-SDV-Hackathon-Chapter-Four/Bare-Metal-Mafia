@@ -62,6 +62,7 @@ pub struct CabinTemperatureEvent {
     pub temperature_celsius: f32,
     pub timestamp_ms: u64,
     pub sensor_status: SensorStatus,
+    pub sensor_id: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -321,11 +322,9 @@ pub fn evaluate_state(child_present: bool, temperature_celsius: f32, ews_warn: b
     }
 
     if temperature_celsius >= 28.5 {
-        GuardianState::Critical
+        return GuardianState::Critical;
     } else if temperature_celsius >= 25.0 {
-        GuardianState::Warning
-    } else {
-        GuardianState::Monitoring
+        return GuardianState::Warning;
     }
 
     if ews_warn {
