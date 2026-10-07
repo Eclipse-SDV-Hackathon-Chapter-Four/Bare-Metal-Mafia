@@ -25,6 +25,7 @@ pub const TOPIC_HVAC_SET_TEMPERATURE: &str =
 pub const TOPIC_HVAC_ACTIVE_STATE: &str =
     "up/sdv/guardian/vss/Vehicle.Cabin.HVAC.IsAirConditioningActive";
 pub const TOPIC_HVAC_STATE: &str = "up/sdv/guardian/hvac/state";
+pub const TOPIC_S32_WINDOW_POSITION: &str = "up/sdv/guardian/s32k148/window_position";
 
 pub const RID_CHILD_PRESENCE_EVENT: u16 = 0x9001;
 pub const RID_CABIN_TEMPERATURE_EVENT: u16 = 0x9002;
@@ -33,6 +34,7 @@ pub const RID_WINDOW_STATE_EVENT: u16 = 0x9004;
 pub const RID_HVAC_SET_TEMPERATURE_EVENT: u16 = 0x9005;
 pub const RID_HVAC_ACTIVE_STATE_EVENT: u16 = 0x9006;
 pub const RID_HVAC_STATE_EVENT: u16 = 0x9007;
+pub const RID_S32_WINDOW_POSITION_EVENT: u16 = 0x9008;
 
 pub const RID_DIAG_WINDOW_CMD_EVENT: u16 = 0x9010;
 pub const RID_DIAG_ALARM_CMD_EVENT: u16 = 0x9011;
@@ -151,6 +153,18 @@ pub struct HvacStateEvent {
     pub timestamp_ms: u64,
 }
 
+/// WindowPosition (DID 0xCF20) read from the real S32K148 OpenBSW ECU over
+/// DoIP/UDS. Separate from `WindowStateEvent` (which is published by the
+/// simulated `window_controller_sim`) so the dashboard can show both the
+/// simulated actuator and the real hardware side by side without either one
+/// overwriting the other.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct S32WindowPositionEvent {
+    pub percentage: u8,
+    pub source: String,
+    pub timestamp_ms: u64,
+}
+
 pub fn vss_child_presence_uri() -> UUri {
     UUri::try_from_parts("guardian-vss", 0x9000, 0x01, RID_CHILD_PRESENCE_EVENT).unwrap()
 }
@@ -177,6 +191,10 @@ pub fn vss_hvac_active_state_uri() -> UUri {
 
 pub fn hvac_state_uri() -> UUri {
     UUri::try_from_parts("guardian-hvac", 0x9005, 0x01, RID_HVAC_STATE_EVENT).unwrap()
+}
+
+pub fn s32_window_position_uri() -> UUri {
+    UUri::try_from_parts("guardian-vss", 0x9000, 0x01, RID_S32_WINDOW_POSITION_EVENT).unwrap()
 }
 
 pub fn diag_window_cmd_uri() -> UUri {

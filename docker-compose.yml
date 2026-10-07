@@ -318,6 +318,40 @@ services:
     profiles:
       - threadx
 
+  # ── Stage D: real S32K148 OpenBSW ECU bridge (DoIP/UDS → uProtocol) ────────
+  #
+  # Reads the WindowPosition UDS data identifier (DID 0xCF20) from a real
+  # NXP S32K148EVB-Q176 over DoIP and republishes it as a uProtocol event,
+  # so the Guardian dashboard can show the real actuation target value
+  # alongside the simulated one from window_controller_sim.
+  #
+  # IMPORTANT: this needs direct L2/L3 access to the automotive Ethernet
+  # segment the board lives on - `network_mode: host` only actually grants
+  # that on a Linux Docker host. On Windows/macOS (Docker Desktop), host
+  # networking does not reach a physical adapter the way it does on Linux -
+  # run this binary natively there instead (`cargo run --bin
+  # s32k148_doip_bridge`), pointing ZENOH_CONNECT at wherever zenohd is
+  # reachable (it does not need to be the same machine as the hardware).
+  s32k148-doip-bridge:
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BIN_NAME: s32k148_doip_bridge
+    image: hack-to-the-future/s32k148-doip-bridge:stage-d
+    network_mode: host
+    environment:
+      S32K148_IP: "192.168.0.200"
+      S32K148_DOIP_PORT: "13400"
+      S32K148_UDS_ADDRESS: "0x002A"
+      S32K148_TESTER_ADDRESS: "0x0E00"
+      S32K148_WINDOW_DID: "0xCF20"
+      POLL_INTERVAL_S: "2"
+      RUST_LOG: info
+      ZENOH_CONNECT: tcp/127.0.0.1:7447
+    profiles:
+      - s32k148
+
 networks:
   default:
     name: hack-to-the-future-net
