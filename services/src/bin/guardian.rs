@@ -198,7 +198,11 @@ impl GuardianRuntime {
     }
 
     fn recompute_and_log(&mut self) -> bool {
-        let base = evaluate_state(self.child_present, self.temperature_celsius);
+        let base = evaluate_state(
+            self.child_present,
+            self.temperature_celsius,
+            self.ews_warn.load(Ordering::Relaxed),
+        );
         let mut trigger_mitigation = false;
 
         if base == GuardianState::Critical {
