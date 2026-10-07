@@ -44,6 +44,17 @@ services:
     depends_on: !override
       - zenohd
 
+  # Only relevant with --profile ros2 (HVAC via Eclipse Muto): same edit, so
+  # replace mode and the ROS 2 HVAC path can run together.
+  ros2-hvac:
+    depends_on: !override
+      - artifact-server
+      - zenohd
+
+  # extends ros2-hvac and would inherit the dependency on window-controller-sim
+  ros2-hvac-host-can:
+    depends_on: !override []
+
   gazebo-sim:
     environment:
       ROS_UP_BRIDGE_MODE: replace
