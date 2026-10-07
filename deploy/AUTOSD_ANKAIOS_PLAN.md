@@ -1,6 +1,15 @@
 # Running the Guardian stack on AutoSD + Ankaios (plan, not yet implemented)
 
-Assisted by Claude Code.
+SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
+
+AI Disclosure: This file was largely AI-generated. The AI-generated
+portions are made available under CC0-1.0 and not subject to the
+project's licence. The human contributor has reviewed and verified
+the accuracy of the content to the extent it could be verified without
+access to real AutoSD hardware (see "Open risks" below for what could
+not be verified this way).
+
+Assisted-by: Anthropic Claude (Sonnet 5)
 
 ## Why
 

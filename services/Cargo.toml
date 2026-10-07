@@ -10,7 +10,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "process", "rt-multi-thread", "signal", "time"] }
-tokio-serial = "5" # az3166_serial_bridge dependency; assisted by Claude Code
+tokio-serial = "5" # az3166_serial_bridge dependency. Assisted-by: Anthropic Claude (Sonnet 5)
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 uuid = { version = "1", features = ["v4", "serde"] }

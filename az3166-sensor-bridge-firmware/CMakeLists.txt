@@ -1,6 +1,13 @@
-# AZ3166 (MXChip IoT DevKit, STM32F412RG) ThreadX sensor bridge firmware.
+# SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #
-# Assisted by Claude Code.
+# AI Disclosure: This file was largely AI-generated. The AI-generated
+# portions are made available under CC0-1.0 and not subject to the
+# project's licence. The human contributor has reviewed and verified
+# that the code is correct.
+#
+# Assisted-by: Anthropic Claude (Sonnet 5)
+#
+# AZ3166 (MXChip IoT DevKit, STM32F412RG) ThreadX sensor bridge firmware.
 #
 # Reads the onboard LSM6DSL (accelerometer + die temperature) and writes
 # one JSON line per reading to USART6 (the ST-Link virtual COM port). The

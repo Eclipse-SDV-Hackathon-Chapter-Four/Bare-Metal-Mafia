@@ -358,7 +358,7 @@ services:
       - s32k148
 
   # ── Stage E: real AZ3166 (Eclipse ThreadX) sensor bridge (UART → uProtocol) ─
-  # Assisted by Claude Code.
+  # Assisted-by: Anthropic Claude (Sonnet 5)
   #
   # Reads LSM6DSL accelerometer + die-temperature readings from a real
   # MXChip AZ3166 over its ST-Link virtual COM port (same USB cable used to

@@ -1,5 +1,12 @@
 /*
- * Assisted by Claude Code.
+ * SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
+ *
+ * AI Disclosure: This file was largely AI-generated. The AI-generated
+ * portions are made available under CC0-1.0 and not subject to the
+ * project's licence. The human contributor has reviewed and verified
+ * that the code is correct.
+ *
+ * Assisted-by: Anthropic Claude (Sonnet 5)
  *
  * AZ3166 ThreadX sensor bridge firmware — main.c
  *

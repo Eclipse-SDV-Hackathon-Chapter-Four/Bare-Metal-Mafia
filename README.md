@@ -3,7 +3,8 @@ Hack to the Future – Guardian Loop: portable child presence detection that mov
 
 ## Quickstart: run the whole stack on a Raspberry Pi
 
-<!-- Assisted by Claude Code -->
+<!-- This section (Pi quickstart) was largely AI-generated.
+     Assisted-by: Anthropic Claude (Sonnet 5) -->
 
 > Looking for the AutoSD + Eclipse Ankaios runtime instead of Raspberry Pi
 > OS + Docker Compose (the combination the hackathon challenge brief calls

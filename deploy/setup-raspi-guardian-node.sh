@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 #
-# Assisted by Claude Code.
+# SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
+#
+# AI Disclosure: This file was largely AI-generated. The AI-generated
+# portions are made available under CC0-1.0 and not subject to the
+# project's licence. The human contributor has reviewed and verified
+# that the code is correct.
+#
+# Assisted-by: Anthropic Claude (Sonnet 5)
 #
 # Turn a Raspberry Pi (64-bit Raspberry Pi OS / any Debian-based ARM64 Linux)
 # into a shared, always-on Guardian Loop node: runs the FULL docker-compose

@@ -1,4 +1,11 @@
-# Assisted by Claude Code.
+# SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
+#
+# AI Disclosure: This file was largely AI-generated. The AI-generated
+# portions are made available under CC0-1.0 and not subject to the
+# project's licence. The human contributor has reviewed and verified
+# that the code is correct.
+#
+# Assisted-by: Anthropic Claude (Sonnet 5)
 #
 # ARM GNU Toolchain cross-file for the AZ3166's STM32F412RG (Cortex-M4F) —
 # same toolchain and CPU flags as threadx-temp-sensor's Renode path
