@@ -120,6 +120,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             temperature_celsius: temperature,
             timestamp_ms: now_ms(),
             sensor_status: SensorStatus::Ok,
+            sensor_id: 0,
         };
 
         publish_with_retry(transport.clone(), &event).await?;
@@ -163,6 +164,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             temperature_celsius,
             timestamp_ms: now_ms(),
             sensor_status: SensorStatus::Ok,
+            sensor_id: 0,
         };
 
         publish_with_retry(transport.clone(), &event).await?;

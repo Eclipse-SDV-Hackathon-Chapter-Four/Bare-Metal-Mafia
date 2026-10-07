@@ -62,6 +62,7 @@ pub struct CabinTemperatureEvent {
     pub temperature_celsius: f32,
     pub timestamp_ms: u64,
     pub sensor_status: SensorStatus,
+    pub sensor_id: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
