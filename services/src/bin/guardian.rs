@@ -1,5 +1,5 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
@@ -399,10 +399,11 @@ async fn ews_websocket(
     State(app): State<AppState>,
     websocket: WebSocketUpgrade,
 ) -> axum::response::Response {
-    websocket.on_upgrade(move |socket| handle_ews_socket(socket, app))
+    let ews_warn = app.data.lock().await.ews_warn.clone();
+    websocket.on_upgrade(move |socket| handle_ews_socket(socket, app, ews_warn))
 }
 
-async fn handle_ews_socket(mut socket: WebSocket, app: AppState) {
+async fn handle_ews_socket(mut socket: WebSocket, app: AppState, ews_warn: Arc<AtomicBool>) {
     let mut broadcast_interval = tokio::time::interval(EWS_STATE_BROADCAST_INTERVAL);
 
     loop {
@@ -436,7 +437,7 @@ async fn handle_ews_socket(mut socket: WebSocket, app: AppState) {
                 match message {
                     Some(Ok(Message::Text(payload))) => {
                         match serde_json::from_str::<EwsWarn>(&payload) {
-                            Ok(warning) => handle_ews_warning(warning),
+                            Ok(warning) => handle_ews_warning(warning, ews_warn.clone()),
                             Err(err) => warn!("Invalid EWS warning payload: {}", err),
                         }
                     }
@@ -453,8 +454,10 @@ async fn handle_ews_socket(mut socket: WebSocket, app: AppState) {
     }
 }
 
-fn handle_ews_warning(warning: EwsWarn) {
-
+fn handle_ews_warning(warning: EwsWarn, ews_warn: Arc<AtomicBool>) {
+    match warning.reason {
+        EwsReason::Heat => ews_warn.store(true, Ordering::Relaxed),
+    }
 }
 
 async fn request_mitigation(app: &AppState, rpc_client: Arc<InMemoryRpcClient>) {
