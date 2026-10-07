@@ -6,8 +6,6 @@
 
 *Eclipse SDV Hackathon 2026 · [Hack to the Future](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/Hack-to-the-Future) challenge*
 
-**Stage 1** done · **Stage 2** done · **Stage 3** partial · **Stage 4** done · **Stage 5** partial
-
 [What we achieved, and what we did not](docs/Achieved.md)
 
 </div>
@@ -25,13 +23,11 @@ Build a **Child Presence Detection and Mitigation** feature that:
 
 The feature must keep working unchanged while the hardware underneath it is swapped.
 
-> ### The one rule
+> ### The Golden Rule
 >
 > **The Guardian Loop logic must not change between simulation and real hardware.**
 >
-> The Guardian therefore never talks directly to:
-> CAN, GPIO, serial ports, UDS, DoIP, SOME/IP, device paths or hardware addresses.
-> It only uses uProtocol service interfaces.
+> The Guardian therefore only uses uProtocol service interfaces:
 >
 > | Forbidden inside Guardian | Use instead |
 > | --- | --- |
@@ -94,118 +90,23 @@ No service knows where any other service runs, and that is what makes the swap p
 | **uProtocol pub/sub** | sensor data and state broadcasts: fire and forget, many listeners | temperature event, child-presence event, Guardian state |
 | **uProtocol RPC** | one service asking another to perform an operation and awaiting the result | Guardian to Actuation Adapter: HVAC on, 18 °C, fan 100 %, close window |
 
+For other systems the Guardian also offers an Early Warning System (EWS) WebSocket API,
+used by the Telegram notification service. See [notification/README.md](notification/README.md).
+
 ---
-
-#### Early Warning System (EWS) API
-
-Request Guardian State:
-
-```Rust
-struct EwsGuardianState {
-    time: u64,
-
-    temperature: f32,
-    child_presence: bool,
-    state: GuardianState,
-
-    hvac_active: bool,
-    hvac_target: f32,
-    hvac_fault: bool,
-};
-
-enum GuardianState {
-    Clear,
-    Monitoring,
-    Warning,
-    Critical,
-    Mitigating,
-}
-```
-
-Warn Guardian:
-
-```Rust
-struct EWSWarn {
-    time: u64,
-    reason: Reason,
-}
-
-enum Reason {
-    Reset,
-    Heat,
-}
-```
-
-The Guardian exposes this API as a WebSocket at `ws://localhost:8765/ws`.
-It sends a JSON `GuardianState` update every second. The `time` value is Unix
-time in milliseconds, and `state` is the Guardian's current state enum. EWS
-warnings are received as JSON `EWSWarn` messages on the same connection.
-
-#### Notification service
-
-*(Contents of this header was created by Claude Opus 5.5)*
-
-`notification/` is a dependency-free Java service that connects to the EWS WebSocket
-and sends a Telegram message on every Guardian state change. It reconnects if the
-Guardian restarts.
-
-1. Create a bot with [@BotFather](https://t.me/BotFather) and copy the token.
-2. Send the bot a message, then read your chat id from
-   `https://api.telegram.org/bot<token>/getUpdates` (`message.chat.id`).
-3. Put both into `.env` (git-ignored) or export them:
-
-   ```bash
-   TELEGRAM_BOT_TOKEN=123456:ABC...
-   TELEGRAM_CHAT_ID=987654321
-   ```
-
-4. `docker compose up --build` starts the service next to the Guardian.
-
-If either variable is unset, the service runs in dry-run mode and only logs the messages
-(`docker compose logs -f notification`). To run it outside Docker:
-
-```bash
-javac -d notification/out notification/src/*.java
-GUARDIAN_EWS_URL=ws://localhost:8765/ws java -cp notification/out NotificationService
-```
 
 ## Development Journey
 
-The official challenge progression, and where we stand:
+The official challenge progression, and where we ended up.
+The full recap, including what we did not reach, is in [docs/Achieved.md](docs/Achieved.md).
 
 | Stage | Objective | Status | Notes |
 | :--: | --- | --- | --- |
-| **1** | **Guardian Loop on your laptop.** Simulated sensors publish over uProtocol, Guardian shows state transitions | **Done** | Inherited from the reference stack. `docker compose up` shows the full escalation in about 30 s |
+| **1** | **Guardian Loop on your laptop.** Simulated sensors publish over uProtocol, Guardian shows state transitions | **Done** | Inherited from the reference stack. `docker compose up` shows the full escalation within seconds |
 | **2** | **Add simulated actuation.** uProtocol RPC to Actuation Adapter, CDA, window controller | **Done** | The SIL loop is closed end to end. The ROS 2 HVAC path is wired up as well |
 | **3** | **Run Guardian on AutoSD.** Same artifact, only deployment and configuration change | **Partial** | Guardian and zenohd run as real Podman containers inside AutoSD on a Raspberry Pi. The rest of the stack was never built in the VM. See [deploy/AUTOSD_ON_PI.md](deploy/AUTOSD_ON_PI.md) |
 | **4** | **Replace the temperature simulator.** AZ3166 with Eclipse ThreadX over SOME/IP | **Done** | Runs on the physical board over USB serial, plus the Renode and SOME/IP paths |
 | **5** | **Replace the simulated actuator.** openDuT switches to OpenBSW or physical targets | **Partial** | The S32K148 with OpenBSW is driven over real DoIP/UDS. openDuT itself was never started |
-
----
-
-## Our Goals
-
-What we set out to do, ordered by what unblocks the most, with how it ended.
-The full recap is in [docs/Achieved.md](docs/Achieved.md).
-
-| # | Goal | Serves | Outcome |
-| :--: | --- | :--: | --- |
-| 1 | **Get openDuT running as our testbench** | Stage 5 | **Not started.** The one requirement we never reached |
-| 2 | **Deploy Guardian on the AutoSD HPC** | Stage 3 | **Partial.** Guardian and zenohd run as Podman containers in the AutoSD VM on the Pi |
-| 3 | **Move the sensors to real hardware** | Stage 4 | **Done.** AZ3166 with ThreadX replaced `temperature-sim`, and the Guardian never noticed |
-| 4 | **Strengthen the Guardian decision logic** | bonus | **Partial.** Redundant sensors and fault tolerance landed, rate of change and confidence did not. See below |
-| 5 | **Leverage the ROS 2 and Muto HVAC path** | Stage 2+ | **Done.** Plus our own Gazebo cabin and its ROS 2 ↔ uProtocol bridge |
-| 6 | **Build the demo narrative along the five stages** | all | **Done.** `./gazebo-sim/run.sh demo` runs it end to end |
-
-### Guardian logic ideas (goal 4)
-
-- **Redundant sensors.** *Done.* `CabinTemperatureEvent` carries a `sensor_id`, a second temperature sensor was added, and two sensors disagreeing by more than 5 °C mark each other broken.
-- **Fault tolerance.** *Done.* If every known sensor is broken the Guardian starts cooling anyway — a missing sensor is not a safe cabin.
-- **Rate of change.** *Open.* A cabin heating at 0.5 °C/s is an emergency long before it crosses 40 °C.
-- **Sensor confidence.** *Open.* The child-presence event already carries a confidence field, 0.98 in the simulator, and we still ignore it. Use it to gate escalation.
-
-> All of this stays inside `evaluate_state` in `services/src/lib.rs`, and none of it may
-> introduce a transport or hardware dependency. See the Golden Rule.
 
 ---
 
@@ -227,11 +128,10 @@ The full recap is in [docs/Achieved.md](docs/Achieved.md).
 | **Dashboard**, live one-page view | `services/src/bin/dashboard.rs`, port 8094 | Done |
 | **Gazebo cabin simulation**, Fortress world (window joint, seat contact) with a ROS 2 ↔ uProtocol bridge; mode *mirror* (Gazebo follows the window state) and *replace* (Gazebo replaces the window controller and child presence simulators), one start script, laptops only | `gazebo-sim/`, `services/src/bin/gazebo_bridge.rs` | Done, **our own work** (not from the reference stack) |
 | **AutoSD HPC deployment** | `deploy/AUTOSD_ON_PI.md`, `deploy/setup-raspi-guardian-node.sh` | Partial, Guardian + zenohd proven in the VM |
-| **openDuT topology** | — | Open, never started |
-| **eCall / Notification service**, Telegram via EWS WebSocket (Java) | `notification/` | Done, mock |
+| **eCall / Notification service**, Telegram via EWS WebSocket (Java) | [`notification/`](notification/README.md) | Done, mock |
 
-> Nothing here is written from scratch. The challenge is integration and portability
-> rather than reimplementation; the end-to-end SDV architecture is the point.
+> Most blocks come from the reference stack: the challenge is integration and portability
+> rather than reimplementation. The rows marked *our own work* are the exception.
 
 ---
 
@@ -243,16 +143,15 @@ docker compose up --build          # full SIL stack
 
 Then open the dashboard at <http://localhost:8094>.
 
-The simulators run a scripted scenario at start-up, so every Guardian state appears
-within roughly 30 seconds:
+The simulators run a short scenario at start-up. The cabin starts at 26 °C and heats up
+by about 0.5 °C per second until something cools it:
 
 | Time | Event | Guardian state |
 | :--: | --- | --- |
-| ~1 s | 26 °C, no child | `CLEAR` |
-| ~5 s | child present, confidence 0.98, zone `rear_center` | `MONITORING` |
-| ~5 s | 36 °C | `WARNING` |
-| ~9 s | 43 °C | `CRITICAL`, then `MITIGATING`: HVAC on, 18 °C, fan 100 % |
-| +12 s | HVAC never confirms | `MITIGATING` stage 2: window 25 %, alarm |
+| ~1 s | no child | `CLEAR` |
+| ~4 s | child present, confidence 0.98, cabin already above 25 °C | `WARNING` |
+| ~5 s | 28.5 °C | `CRITICAL`, then `MITIGATING`: HVAC on, 18 °C, fan 100 % |
+| +12 s | still ≥ 28.5 °C, or HVAC fault injected on the dashboard | `MITIGATING` stage 2: window open, alarm |
 
 Optional profiles:
 
@@ -273,19 +172,11 @@ The full walkthrough is in [docs/Tutorial.md](docs/Tutorial.md).
 | --- | --- |
 | [docs/Achieved.md](docs/Achieved.md) | You want the honest recap: what we built, what we did not, and why |
 | [docs/Tutorial.md](docs/Tutorial.md) | You want the stack running and explained service by service |
+| [notification/README.md](notification/README.md) | You want the EWS WebSocket API or Telegram notifications |
 | [docs/Guardian-loop.md](docs/Guardian-loop.md) | You are building a component and need to know which existing project to copy from |
 | [deploy/AUTOSD_ON_PI.md](deploy/AUTOSD_ON_PI.md) | You want the Guardian running on AutoSD, and the three blockers we hit |
 | [firmware/S32K148_HARDWARE_BRINGUP.md](firmware/S32K148_HARDWARE_BRINGUP.md) | You are bringing up the S32K148 and the automotive Ethernet link |
 | [docs/structure.drawio](docs/structure.drawio) | You need the editable architecture diagram |
-
----
-
-## Open Dependencies
-
-- **openDuT testbench access.** Blocks the topology-change half of Stage 5.
-- **More AZ3166 boards.** One board carries the temperature path today; a second
-  would give the Guardian two real sensors to disagree about.
-- Renode still keeps the ThreadX path runnable without a board.
 
 ---
 
@@ -305,10 +196,12 @@ The full walkthrough is in [docs/Tutorial.md](docs/Tutorial.md).
 
 **Full challenge**
 
-- [x] Guardian running on AutoSD — as a real Podman container in the AutoSD VM on a Raspberry Pi. Guardian and zenohd only; the rest of the stack was never built inside the VM
-- [ ] openDuT manages the topology change — never started, our one untouched requirement
-- [x] At least one physical embedded endpoint (AZ3166 with ThreadX) — and a second one, the S32K148 with OpenBSW over DoIP/UDS
+- [x] Guardian running on AutoSD (Guardian and zenohd only, see Stage 3)
+- [ ] openDuT manages the topology change
+- [x] At least one physical embedded endpoint (AZ3166 with ThreadX, plus the S32K148 with OpenBSW)
 - [x] Identical service artifacts before and after the configuration change
+
+---
 
 ## AI Usage
 
@@ -327,6 +220,9 @@ below the copyright and licence header.
 |---|---|
 | Claude Code with Anthropic Claude Opus 5.5 (`claude-opus-5-5`) | `gazebo-sim/` (Gazebo simulation backend, `run.sh`, ROS side of the bridge) and `services/src/bin/gazebo_bridge.rs` (uProtocol side of the bridge): code, configuration, tests and their documentation, plus the related additions to `docker-compose.yml` (the `gazebo-sim` and `gazebo-bridge` services), to `Containerfile`, to this README and [NOTICE.md](NOTICE.md) |
 | Claude Code with Anthropic Claude Fable 5.1 (`claude-fable-5-1`) | the separate Gazebo server/GUI start in `gazebo-sim/launch/gazebo_sim.launch.py`, and the publish-race fix in `services/src/bin/window_controller_sim.rs` (marked with `Assisted-by` comments in that file) |
+| Claude Code with Anthropic Claude Sonnet 5 | AZ3166 serial bridge, `deploy/setup-raspi-guardian-node.sh`, the AutoSD and S32K148 bring-up documents |
+| Claude Code with Anthropic Claude Opus 5 | project overview, understanding the tasks, summarising the READMEs, [docs/Achieved.md](docs/Achieved.md) |
+| Claude Code with Anthropic Claude Opus 5.5 (`claude-opus-5-5`) | reviewing and restructuring this README and the documentation |
 
 **How we mark it.** These are our project conventions on top of the
 guidelines, not requirements of the guidelines themselves:
@@ -354,11 +250,3 @@ conventions may have been created with AI assistance but do not carry an
 **AI-generated files without a header.** Files without a comment syntax
 (for example JSON) cannot carry the header and are listed here instead:
 currently none.
-
-## Pi credentials
-
-- Hostname: pi
-- Username: pi
-- Password: pi
-
-Connect via ssh: `ssh pi@pi`

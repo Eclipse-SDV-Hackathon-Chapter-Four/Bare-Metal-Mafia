@@ -61,18 +61,22 @@ Open the dashboard: <http://localhost:8094>.
 
 ## 3. Watch the Guardian Loop escalate
 
-The simulators run a fixed script at start-up so you can see every state of
-the Guardian within about 30 seconds. Restart the stack (`Ctrl-C`, then
+The simulators run a short scenario at start-up so you can see every state
+of the Guardian within seconds. `temperature-sim` starts at 26 °C and, with the
+settings in `docker-compose.yml`, heats up by 0.5 °C per second. Restart the stack (`Ctrl-C`, then
 `docker compose up`) if you missed it.
 
 | time | what the simulators publish | Guardian state | why |
 |---|---|---|---|
 | ~1 s | temperature 26 °C, child **absent** | **CLEAR** | no child, nothing to do |
-| ~5 s | child **present** (confidence 0.98, zone `rear_center`) | **MONITORING** | child present, cabin still safe (< 32 °C) |
-| ~5 s | temperature 36 °C | **WARNING** | ≥ 32 °C with a child inside |
-| ~9 s | temperature 43 °C | **CRITICAL** → **MITIGATING** | ≥ 40 °C. Guardian sends a mitigation RPC: HVAC on, 18 °C, fan 100 %, window closed. |
-| +12 s | HVAC never reports "active" (there is no HVAC yet) | **MITIGATING** (stage 2) | Guardian escalates: window 25 %, alarm on |
-| after | thermal model: sun heats +0.18 °C/step, open window cools, HVAC would cool faster | temperature falls, state follows the thresholds | closed loop |
+| ~4 s | child **present** (confidence 0.98, zone `rear_center`) | **WARNING** | ≥ 25 °C with a child inside |
+| ~5 s | temperature 28.5 °C | **CRITICAL** → **MITIGATING** | ≥ 28.5 °C. Guardian sends a mitigation RPC: HVAC on, 18 °C, fan 100 %, window closed. |
+| +12 s | still ≥ 28.5 °C, or an HVAC fault is injected | **MITIGATING** (stage 2) | Guardian escalates: window open, alarm on |
+| after | thermal model: heats +0.5 °C per step, open window and HVAC cool | temperature falls, state follows the thresholds | closed loop |
+
+Without a child in the cabin the Guardian stays **CLEAR** at any temperature.
+With a child, **MONITORING** only shows below 25 °C, so you see it when the
+cabin has cooled down again.
 
 The thresholds live in one function, `evaluate_state` in
 `services/src/lib.rs`. Look at it now; it is 12 lines and it *is* the
@@ -172,7 +176,7 @@ cat /root/.muto/workspaces/guardian_hvac_simulator/run.log   # the node's own lo
 ```
 
 How Muto deployed it, how the CAN bridge works, and how to change the
-workload: [ros2-hvac/README.md](ros2-hvac/README.md) (start with its
+workload: [ros2-hvac/README.md](../ros2-hvac/README.md) (start with its
 five-minute tour).
 
 ## 6. Inject an HVAC fault and watch the escalation change
@@ -306,7 +310,7 @@ challenge expects you to replace with the real Eclipse project.
   containers, `cargo run --bin guardian` with `ZENOH_CONNECT=tcp/127.0.0.1:7447`
   connects to the containerized router (port 7447 is published).
 - **ROS 2 HVAC workload**: see the development loop in
-  [ros2-hvac/README.md §9](ros2-hvac/README.md#9-development-loop); the
+  [ros2-hvac/README.md §9](../ros2-hvac/README.md#9-development-loop); the
   artifact must be rebuilt and the image re-created.
 - **Adding a service**: copy the smallest binary (`child_presence_sim.rs`)
   to a new file in `services/src/bin/`; Cargo builds every file there as a
@@ -321,9 +325,9 @@ challenge expects you to replace with the real Eclipse project.
 |---|---|
 | a service logs `publish failed` repeatedly at start-up | normal for the first seconds while `zenohd` starts; services retry. Persistent: is `zenohd` running (`docker compose ps`)? |
 | Guardian stays CLEAR | `docker compose logs child-presence-sim`; it must log `published child presence: true` |
-| Guardian never reaches CRITICAL | `docker compose logs temperature-sim`; the scripted 43 °C comes ~9 s after start. If the `threadx` profile is active, the ThreadX sensor now owns the temperature |
+| Guardian never reaches CRITICAL | `docker compose logs temperature-sim`; 28.5 °C is reached ~5 s after start. If the `threadx` profile is active, the ThreadX sensor now owns the temperature |
 | window never opens | HVAC mitigation may be succeeding (with the `ros2` profile). Inject an HVAC fault (section 6) to force the window stage |
-| `ros2-hvac` up but no `/hvac_simulator` node | read `run.log` inside the container (section 5); see [ros2-hvac/README.md §11](ros2-hvac/README.md#11-troubleshooting) |
+| `ros2-hvac` up but no `/hvac_simulator` node | read `run.log` inside the container (section 5); see [ros2-hvac/README.md §11](../ros2-hvac/README.md#11-troubleshooting) |
 | port already in use | another stack instance is running: `docker compose down` |
 | podman: `--force-recreate ros2-hvac` fails | `medkit-web-ui` depends on it; remove both first |
 
