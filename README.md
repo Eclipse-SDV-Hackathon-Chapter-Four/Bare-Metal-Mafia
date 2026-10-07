@@ -87,6 +87,35 @@ No service knows where any other service runs, and that is what makes the swap p
 
 ---
 
+#### Early Warning System (EWS) API
+
+Request Guardian State:
+
+```Rust
+struct GuardianState {
+    time: u64,
+
+    temperature: f32,
+    child_presence: bool,
+
+    hvac_active: bool,
+    windows_down: bool,
+};
+```
+
+Warn Guardian:
+
+```Rust
+struct EWSWarn {
+    time: u64,
+    reason: Reason,
+}
+
+enum Reason {
+    Heat = 0,
+}
+```
+
 ## Development Journey
 
 The official challenge progression, and where we stand:
