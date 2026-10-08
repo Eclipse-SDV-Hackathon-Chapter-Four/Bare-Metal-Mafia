@@ -125,24 +125,8 @@ expects more than one.
 
 ## Usage of AI
 
-The full disclosure is in the [README](../README.md#ai-usage) and in
-[NOTICE.md](../NOTICE.md); this is the summary.
-
 We follow the Eclipse Foundation's
 [Generative AI Usage Guidelines](https://www.eclipse.org/projects/guidelines/genai).
-
-| Tool | Used for |
-|---|---|
-| Claude Opus 5.5 (`claude-opus-5-5`) | `gazebo-sim/` and `services/src/bin/gazebo_bridge.rs`, the notification service, and the related README / compose additions |
-| Claude Fable 5.1 (`claude-fable-5-1`) | the split Gazebo server/GUI start, the `window_controller_sim` race fix |
-| Claude Sonnet 5 | AZ3166 serial bridge, `deploy/setup-raspi-guardian-node.sh`, the AutoSD and S32K148 bring-up documents |
-| Claude Opus 5 | project overview, understanding the tasks, summarising the READMEs, and this document |
-
-How we mark it:
-
-- Largely AI-generated files carry an AI Disclosure header,
-  `SPDX-License-Identifier: Apache-2.0 AND CC0-1.0`, and an `Assisted-by:` line.
-- Commits written with AI assistance carry an `Assisted-by:` trailer.
-- Every contribution, AI-assisted or not, was reviewed by a human before merging.
-- Commits from before we adopted this convention may have used AI without the trailer.
-  We did not rewrite published history.
+Which models we used for what, and how AI-assisted files and commits are marked, is
+listed in one place: the [AI Usage section of the README](../README.md#ai-usage),
+together with [NOTICE.md](../NOTICE.md).
