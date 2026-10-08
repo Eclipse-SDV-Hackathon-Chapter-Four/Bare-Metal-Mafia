@@ -1,0 +1,15 @@
+model,result_type,class,precision,recall,f1_score,support,value
+Logistic Regression,class_metrics,DROP,0.7045454545454546,0.9117647058823529,0.7948717948717948,34.0,
+Logistic Regression,class_metrics,NORMAL,0.5,0.16666666666666666,0.25,6.0,
+Logistic Regression,class_metrics,SPIKE,0.983739837398374,0.937984496124031,0.9603174603174603,129.0,
+Logistic Regression,overall_metric,ALL,,,,169.0,0.9053254437869822
+Logistic Regression,overall_metric,ALL,,,,169.0,0.6721386228910169
+Logistic Regression,overall_metric,ALL,,,,169.0,0.6683964183964184
+Logistic Regression,overall_metric,ALL,,,,169.0,0.9018141621691917
+XGBoost,class_metrics,DROP,1.0,0.9411764705882353,0.9696969696969697,34.0,
+XGBoost,class_metrics,NORMAL,0.75,1.0,0.8571428571428571,6.0,
+XGBoost,class_metrics,SPIKE,1.0,1.0,1.0,129.0,
+XGBoost,overall_metric,ALL,,,,169.0,0.9881656804733728
+XGBoost,overall_metric,ALL,,,,169.0,0.9803921568627452
+XGBoost,overall_metric,ALL,,,,169.0,0.9422799422799423
+XGBoost,overall_metric,ALL,,,,169.0,0.9888316811393734

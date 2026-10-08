@@ -1,0 +1,12 @@
+,0
+anomaly_child_temperature_warning,553
+anomaly_hvac_stuck_off,490
+anomaly_child_hvac_off,442
+anomaly_child_temperature_high,406
+anomaly_temperature_spike,344
+anomaly_child_temperature_critical,326
+anomaly_hvac_ineffective,62
+anomaly_hvac_fault,32
+anomaly_sensor_spike,22
+anomaly_temperature_drop,21
+anomaly_window_hvac_conflict,7

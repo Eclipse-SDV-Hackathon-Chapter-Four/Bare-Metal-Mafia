@@ -1,0 +1,4 @@
+temperature_event_next_10min,count
+NORMAL,570
+SPIKE,328
+DROP,21
