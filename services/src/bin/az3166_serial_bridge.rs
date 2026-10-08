@@ -41,6 +41,10 @@
  *   AZ3166_SERIAL_PORT   Serial device/port (e.g. "COM4" on Windows,
  *                        "/dev/ttyACM0" on Linux). No default - required.
  *   AZ3166_BAUD_RATE     Baud rate                (default: 115200)
+ *   AZ3166_SENSOR_ID     sensor_id in CabinTemperatureEvent (default: 2).
+ *                        Give every board its own ID when several run at
+ *                        once - Guardian averages and cross-checks the
+ *                        sensors per ID.
  *   ZENOH_CONNECT        Zenoh router endpoint     (default: tcp/zenohd:7447)
  *   RUST_LOG             Log level                 (default: info)
  *
@@ -107,10 +111,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(115200);
+    let sensor_id: u64 = std::env::var("AZ3166_SENSOR_ID")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(2);
 
     info!("=== AZ3166 UART -> uProtocol bridge ===");
     info!("    Serial port       : {}", serial_port);
     info!("    Baud rate         : {}", baud_rate);
+    info!("    Sensor ID         : {}", sensor_id);
 
     let uri_provider = make_uri_provider("az3166-serial-bridge", 0x9206, 0x01);
     let transport = open_up_transport(uri_provider).await?;
@@ -124,7 +133,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     loop {
-        match run_bridge_loop(&serial_port, baud_rate, &transport, &temperature_sink, &imu_sink).await
+        match run_bridge_loop(
+            &serial_port,
+            baud_rate,
+            sensor_id,
+            &transport,
+            &temperature_sink,
+            &imu_sink,
+        )
+        .await
         {
             Ok(()) => {
                 // run_bridge_loop only returns on EOF (device unplugged).
@@ -141,6 +158,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn run_bridge_loop(
     serial_port: &str,
     baud_rate: u32,
+    sensor_id: u64,
     transport: &std::sync::Arc<dyn up_rust::UTransport>,
     temperature_sink: &up_rust::UUri,
     imu_sink: &up_rust::UUri,
@@ -163,7 +181,7 @@ async fn run_bridge_loop(
             temperature_celsius: frame.die_temp_c,
             timestamp_ms: now,
             sensor_status: SensorStatus::Ok,
-            sensor_id: 2,
+            sensor_id,
         };
         if let Err(e) =
             publish_json_event(transport.clone(), temperature_sink.clone(), &temperature_event).await
