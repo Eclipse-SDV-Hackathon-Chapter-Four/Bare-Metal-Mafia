@@ -84,6 +84,56 @@ Summary: temperature sensor, Guardian Loop and window motor all run on real hard
 - Documentation: [docs/Tutorial.md](Tutorial.md) walks through the stack service by
   service, from a plain `docker compose up` to the ThreadX and ROS 2 profiles.
 
+### Cabin anomaly detection and temperature prediction
+
+- Developed a Python-based analysis pipeline (`cabin_anomaly_detection.py`) to process
+  cabin event data collected in CSV format. The pipeline validates the input schema,
+  processes timestamps, reconstructs the latest known system state from event-based
+  records, and performs feature engineering.
+
+- Implemented explainable, rule-based anomaly detection for three categories:
+
+  - **HVAC anomalies:** Detects HVAC stuck OFF when a child is present and the
+    temperature exceeds the target by more than 2°C, ineffective HVAC behavior when
+    the temperature continues rising despite HVAC operation, and explicitly reported
+    HVAC faults.
+
+  - **Temperature anomalies:** Identifies temperature rises or drops of at least 2°C
+    based on future temperature observations within the following 10 minutes, and
+    flags degraded temperature sensor status.
+
+  - **Child-safety anomalies:** Assigns warning, high and critical temperature levels
+    at 26°C, 28°C and 30°C respectively when a child is present. It also identifies
+    the combination of a present child, HVAC OFF and temperature of at least 26°C
+    as an additional risk condition.
+
+- Combined individual rule outputs into `HVAC_ANOMALY`, `TEMPERATURE_ANOMALY` and
+  `CHILD_SAFETY_ANOMALY` indicators, with a separate child-safety severity
+  classification.
+
+- Developed a separate machine-learning pipeline to predict how cabin temperature
+  is likely to behave over the next 10 minutes when a child is present. It uses
+  16 current-state and engineered features covering temperature, child confidence,
+  HVAC status and settings, window information, and temperature trends.
+
+- Compared Logistic Regression as a baseline classifier against XGBoost for three
+  prediction classes: `NORMAL`, `SPIKE` and `DROP`. Applied class weighting in
+  XGBoost to address class imbalance and evaluated both models using accuracy,
+  balanced accuracy, macro F1, class-wise metrics and confusion matrices.
+
+- Generated analysis outputs under `results/`, including
+  `anomaly_detection_results.csv`, `temperature_prediction_dataset.csv` and
+  `model_results.csv`, along with visualizations of event distributions, anomaly
+  categories, temperature timelines, child-safety conditions, model confusion
+  matrices and feature importance.
+
+- **Preliminary model evaluation:** On the current randomized test split, Logistic
+  Regression achieved 90.53% accuracy, while XGBoost achieved 98.82% accuracy,
+  98.04% balanced accuracy and 94.23% macro F1. These results demonstrate the
+  potential of XGBoost on the experimental dataset; further evaluation on
+  chronologically held-out data and additional real-world observations is needed
+  to assess generalization.
+
 ### Found on the way
 
 - Publish race in `services/src/bin/window_controller_sim.rs`: a stale window state could
