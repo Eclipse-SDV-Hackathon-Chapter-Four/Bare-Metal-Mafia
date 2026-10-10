@@ -49,6 +49,7 @@ The feature must keep working unchanged while the hardware underneath it is swap
 | 3 | Terra | openDuT, OpenBSW | Working hardware |
 | 4 | Dimitri | openDuT, OpenBSW | Working hardware |
 | 5 | Katharina | Loop features | Software architecture > Guardian loop API |
+| 6 | Priya | Temp Anomaly Detection | Software Model |
 
 ---
 
